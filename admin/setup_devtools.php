@@ -127,25 +127,25 @@ if ($provider && $action == 'buildsamplesupplierinvoice') {
 	$sellerId = GETPOST('seller_id', 'alpha');
 	$buyerId = GETPOST('buyer_id', 'alpha');
 
-	if ((float) DOL_VERSION < 24.0) {
-		$resarray = $provider->exchangeProtocol->generateSampleInvoiceOld($pdpconnectfr);
-		$invoice_path = $resarray['path'];
-		$ref = $resarray['ref'];
+	if ($sellerId > 0) {
+		$thirdpartySeller = new Societe($db);
+		$thirdpartySeller->fetch($sellerId);
 	} else {
-		if ($sellerId > 0) {
-			$thirdpartySeller = new Societe($db);
-			$thirdpartySeller->fetch($sellerId);
-		} else {
-			$thirdpartySeller = null;
-		}
-		if ($buyerId > 0) {
-			$thirdpartyBuyer = new Societe($db);
-			$thirdpartyBuyer->fetch($buyerId);
-		} else {
-			$thirdpartyBuyer = $mysoc;
-		}
+		$thirdpartySeller = null;
+	}
+	if ($buyerId > 0) {
+		$thirdpartyBuyer = new Societe($db);
+		$thirdpartyBuyer->fetch($buyerId);
+	} else {
+		$thirdpartyBuyer = $mysoc;
+	}
 
-		$resarray = $provider->exchangeProtocol->generateSampleInvoice($pdpconnectfr, $thirdpartySeller, $thirdpartyBuyer);
+	$options = array('invoicetype' => GETPOSTINT('invoicetype'));
+
+	if ((float) DOL_VERSION < 24.0) {
+		$resarray = $provider->exchangeProtocol->generateSampleInvoiceOld($pdpconnectfr, $thirdpartySeller, $thirdpartyBuyer, $options);
+	} else {
+		$resarray = $provider->exchangeProtocol->generateSampleInvoice($pdpconnectfr, $thirdpartySeller, $thirdpartyBuyer, $options);
 	}
 
 	if (is_numeric($resarray) && $resarray < 0) {
@@ -210,6 +210,8 @@ print '</div>';
 
 print '<br>';
 
+
+// Tool to geenrate sample invoice
 if (getDolGlobalString('PDPCONNECTFR_PDP')) {
 	$provider = $PDPManager->getProvider(getDolGlobalString('PDPCONNECTFR_PDP'));
 
@@ -219,6 +221,19 @@ if (getDolGlobalString('PDPCONNECTFR_PDP')) {
 	print '<input type="hidden" name="action" value="buildsamplesupplierinvoice">';
 	print '<input type="hidden" name="token" value="'.newToken().'">';
 
+	print '<span class="width100 inline-block">'.$langs->trans("InvoiceType").'</span> ';
+	if ((float) DOL_VERSION >= 24.0) {
+		$typeofinvoice = array(
+			Facture::TYPE_DEPOSIT => array('label' => $langs->trans('Deposit')),
+			Facture::TYPE_STANDARD => array('label' => $langs->trans('Standard')),
+			//Facture::TYPE_CREDIT_NOTE => array('label' => $langs->trans('CreditNote'), 'enabled' => false
+		);
+		print $form->selectarray('invoicetype', $typeofinvoice, Facture::TYPE_STANDARD);
+	} else {
+		print $langs->trans("Standard");
+	}
+	print '<br>';
+
 	print '<span class="width100 inline-block">'.$langs->trans("Seller").'</span> ';
 	//print '<input type="text" name="seller_einvoiceid" value="000000002" placeholder="Seller e-invoice ID (Usually SIREN)" class="minwidth150"><br>';
 	if (GETPOST("seller_einvoiceid") && $sellerId <= 0) {
@@ -226,9 +241,10 @@ if (getDolGlobalString('PDPCONNECTFR_PDP')) {
 		$tmpthirdparty->fetch(0, '', '', '', GETPOST("seller_einvoiceid"));
 		$sellerId = $tmpthirdparty->id;
 	}
-	print $form->select_company($sellerId ?: '', 'seller_id', '', $langs->trans("MyCompany"), 1);
+	print $form->select_company($sellerId ?: '', 'seller_id', '', $langs->trans("MyCompany").' ('.$mysoc->idprof1.')', 1);
 	print ' &nbsp; <a href="'.$_SERVER["PHP_SELF"].'?seller_einvoiceid=me" class="reposition">Select me</a>';
-	print ' - <a href="'.$_SERVER["PHP_SELF"].'?seller_einvoiceid=000000001" class="reposition">Select thirdparty with SIREN 000000001</a>';
+	print ' - <a href="'.$_SERVER["PHP_SELF"].'?seller_einvoiceid=000000001" class="reposition">Select thirdparty SIREN 000000001</a>';
+	print ' - <a href="'.$_SERVER["PHP_SELF"].'?seller_einvoiceid=000000002" class="reposition">Select thirdparty SIREN 000000002</a>';
 	print '<br>';
 
 	print '<span class="width100 inline-block">'.$langs->trans("Buyer").'</span> ';
@@ -238,8 +254,9 @@ if (getDolGlobalString('PDPCONNECTFR_PDP')) {
 		$tmpthirdparty->fetch(0, '', '', '', GETPOST("buyer_einvoiceid"));
 		$buyerId = $tmpthirdparty->id;
 	}
-	print $form->select_company($buyerId ?: '', 'buyer_id', '', $langs->trans("MyCompany"), 1);
+	print $form->select_company($buyerId ?: '', 'buyer_id', '', $langs->trans("MyCompany").' ('.$mysoc->idprof1.')', 1);
 	print ' &nbsp; <a href="'.$_SERVER["PHP_SELF"].'?buyer_einvoiceid=000000001" class="reposition">Select thirdparty with SIREN 000000001</a>';
+	print ' - <a href="'.$_SERVER["PHP_SELF"].'?buyer_einvoiceid=000000002" class="reposition">Select thirdparty with SIREN 000000002</a>';
 	print ' - <a href="'.$_SERVER["PHP_SELF"].'?buyer_einvoiceid=me" class="reposition">Select me</a>';
 	print '<br>';
 
