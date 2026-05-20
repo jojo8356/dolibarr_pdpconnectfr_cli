@@ -152,7 +152,7 @@ class modPDPConnectFR extends DolibarrModules
 		// Prerequisites
 		$this->phpmin = array(7, 2); // Minimum version of PHP required by module
 		// $this->phpmax = array(8, 0); // Maximum version of PHP required by module
-		$this->need_dolibarr_version = array(21, -3); // Minimum version of Dolibarr required by module
+		$this->need_dolibarr_version = array(18, -3); // Minimum version of Dolibarr required by module
 		// $this->max_dolibarr_version = array(19, -3); // Maximum version of Dolibarr required by module
 		$this->need_javascript_ajax = 0;
 
@@ -170,7 +170,7 @@ class modPDPConnectFR extends DolibarrModules
 		$this->const = array(
 			1 => array('PDPCONNECTFR_EINVOICE_IN_REAL_TIME', 'chaine', '1', 0),
 			2 => array('PDPCONNECTFR_FLOWS_SYNC_CALL_LIMIT', 'chaine', '1', 0),
-			3 => array('PDPCONNECTFR_SYNC_MARGIN_TIME_HOURS_HELP', 'chaine', '12', 0),
+			3 => array('PDPCONNECTFR_SYNC_MARGIN_TIME_HOURS', 'chaine', '12', 0),
 			4 => array('PDPCONNECTFR_FLOWS_SYNC_CALL_SIZE', 'chaine', '100', 0),
 		);
 
@@ -398,8 +398,8 @@ class modPDPConnectFR extends DolibarrModules
 			'url' => '/pdpconnectfr/document_list.php',
 			'langs' => 'pdpconnectfr@pdpconnectfr',
 			'position' => 1001,
-			'enabled' => 'isModEnabled(pdpconnectfr)',
-			'perms' => '$user->hasRight(facture, lire)',
+			'enabled' => 'isModEnabled("pdpconnectfr")',
+			'perms' => '$user->hasRight("facture", "lire")',
 			'target' => '',
 			'user' => 2,
 			'object' => '',
