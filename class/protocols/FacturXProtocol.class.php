@@ -111,16 +111,16 @@ class FacturXProtocol extends AbstractProtocol
 		// Call page to generate the invoice
 		include dol_buildpath('pdpconnectfr/lib/buildinvoicelines.inc.php');
 		/**
+		 * @var Facture 			$object			The $invoice object used in entry on inc file, but completed.
 		 * @var array<mixed,mixed> 	$invoiceData
 		 * @var array<mixed,mixed> 	$linesData
-		 * @var Facture 			$object
-		 * @var Translate 			$outputlangs
-		 * @var string 				$outputlang
+		 * @var string 				$outputlang		Value of $outputlangs->defaultlang
 		 * @var Account				$account
 		 * @var PdpConnectFr		$pdpconnectfr
+		 * @var string 				$schemdUri		Buyer scheme uri
+		 * @var string 				$uri			Buyer uri
 		 */
 
-		var_dump(getDolGlobalInt('PDPCONNECTFR_USE_EXTERNAL_FACTURX_BUILDER'));
 		if (!getDolGlobalInt('PDPCONNECTFR_USE_EXTERNAL_FACTURX_BUILDER')) {
 			// =====================================================================
 			// Use the CII protocol to generate the XML file
@@ -145,6 +145,8 @@ class FacturXProtocol extends AbstractProtocol
 
 			return $xmlfile;
 		} else {
+			// deprecated, use the native $CII->buildXML method instead !
+
 			// =====================================================================
 			// Use horstoeko lib to build the XML
 			// =====================================================================
@@ -1015,13 +1017,17 @@ class FacturXProtocol extends AbstractProtocol
 
 		// Move factur-x pdf into the temp directory
 		if (is_numeric($pathOfPdf) && $pathOfPdf < 0) {
-			return $pathOfPdf;
+			$result = $pathOfPdf;
 		} else {
 			$newPathOfPdf = dirname($pathOfPdf) . '/temp/' . basename($pathOfPdf);
 			dol_move($pathOfPdf, $newPathOfPdf, '0', 1);
 
-			return array('path' => $newPathOfPdf, 'ref' => $tmpinvoice->ref);
+			$result = array('path' => $newPathOfPdf, 'ref' => $tmpinvoice->ref);
 		}
+
+		// exit;
+
+		return $result;
 	}
 
 
@@ -1245,8 +1251,8 @@ class FacturXProtocol extends AbstractProtocol
 						'typeCode' => $typeCode ?? null,
 						'rateApplicablePercent' => $rateApplicablePercent ?? null,
 						'calculatedAmount' => $calculatedAmount ?? null,
-						'exemptionReason' => $exemptionReason ?? null,
-						'exemptionReasonCode' => $exemptionReasonCode ?? null,
+						'ExemptionReason' => $exemptionReason ?? null,
+						'ExemptionReasonCode' => $exemptionReasonCode ?? null,
 						// Parent invoice ref
 						'parentDocumentNo' => $parsedHeader['documentno'] ?? null,
 						// Additional referenced documents at line level
@@ -1759,47 +1765,6 @@ class FacturXProtocol extends AbstractProtocol
 	}
 
 
-	/************************************************
-	 *    Check line type from external module ?
-	 *
-	 * @param  object $line       line we work on
-	 * @param  string $element    line object element (for special case like shipping)
-	 * @param  string $searchName module name we look for
-	 * @return boolean                        true if the line is a special one and was created by the module we ask for
-	 ************************************************/
-	private function _isLineFromExternalModule($line, $element, $searchName)
-	{
-		// TODO: move this function to class utils
-		global $db;
-		if ($element == 'shipping' || $element == 'delivery') {
-			$fk_origin_line = $line->fk_origin_line;
-			$line = new OrderLine($db);
-			$line->fetch($fk_origin_line);
-		}
-		if ($line->product_type == 9 && $line->special_code == $this->_getModNumber($searchName)) {
-			return true;
-		} else {
-			return false;
-		}
-	}
-
-	/**
-	 * Find module number
-	 *
-	 * @param  string 	$modName 	Module name we look for
-	 * @return integer              -1 if KO, 0 not found or module number if Ok
-	 */
-	private function _getModNumber($modName)
-	{
-		// TODO: move this function to class utils
-		global $db;
-		if (class_exists($modName)) {
-			$objMod = new $modName($db);
-			return $objMod->numero;
-		}
-		return 0;
-	}
-
 	/**
 	 * Map document type code to Dolibarr invoice type
 	 *
@@ -1922,28 +1887,5 @@ class FacturXProtocol extends AbstractProtocol
 		}
 
 		return array('res' => 1, 'message' => 'Attachment saved successfully ' . $dest_path);
-	}
-
-
-	/**
-	 * Check if a given VAT rate is valid for a specific country based on the c_tva table in the database.
-	 *
-	 * @param 	string	$vatrate		Vat rate to check (e.g. '20' for 20%)
-	 * @param 	string	$countryCode	Country code to check the VAT rate against (e.g. 'FR' for France)
-	 * @return 	boolean					Returns true if the VAT rate is valid for the given country, false otherwise.
-	 * TODO Move common function into an implemented CommonXProtocol.class.php if needed by other protocol handlers
-	 */
-	public function checkIfVatRateIsValid($vatrate, $countryCode)
-	{
-		if ($countryCode == 'FR') {
-			// Check rule BR-FR-16 For AFNOR Einvoice - List in XP-Z12-012
-			$validRatesString = ['0', '10', '13', '20', '8.5', '19.6', '2.1', '5.5', '7', '20.6', '1.05', '0.9', '1.75', '9.2', '9.6'];
-			//$valtotest = price2num((float) $vatrate, '', 1);
-			if (!in_array($vatrate, $validRatesString)) {
-				return false;
-			}
-		}
-
-		return true;
 	}
 }

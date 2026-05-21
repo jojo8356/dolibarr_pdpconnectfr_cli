@@ -40,19 +40,22 @@ if (empty($outputlangs) || ! ($outputlangs instanceof Translate)) {
 }
 $newlang = '';
 
-$this->sourceinvoice = $invoice;
-$outputlang = $langs->defaultlang;
-
 // Load PDPConnectFr class
 $pdpconnectfr = new PdpConnectFr($db);
 
-// Reload object
-$facture = new Facture($db);
-$object = $facture->fetch($invoice->id) > 0 ? $facture : $invoice;
-$object->fetch_thirdparty();
+
+$outputlang = $langs->defaultlang;
+
 if (!is_object($invoice->thirdparty)) {
 	$invoice->fetch_thirdparty();
 }
+
+$this->sourceinvoice = $invoice;
+
+// Reload object if not a new object (to get all fields)
+$tmpfacture = new Facture($db);
+$object = $tmpfacture->fetch($invoice->id) > 0 ? $tmpfacture : $invoice;
+
 
 // =====================================================================
 // Data collection into $invoiceData and $linesData arrays
@@ -83,7 +86,7 @@ if ($object->fk_account > 0) {
 } else {
 	$account->fetch(getDolGlobalString('FACTURX_DEFAULT_BANK_ACCOUNT'));
 }
-$account_proprio = trim($account->owner_name);
+$account_proprio = trim(!empty($account->proprio) ? $account->proprio : $account->owner_name);
 if ($account_proprio == '') {
 	dol_syslog('Bank account holder name is empty, please correct it, use socname instead but it could be inccorrect for XRechnung BT-85: Payment account name', LOG_WARNING);
 	$account_proprio = $mysoc->name;
@@ -156,8 +159,12 @@ if (!empty($newlang)) {
 }
 
 // Project
-if (! ($invoice->project instanceof Project)) {
-	$invoice->fetchProject();
+if (! ($object->project instanceof Project)) {
+	if (method_exists($object, 'fetchProject')) {
+		$object->fetchProject();
+	} else {
+		$object->fetch_project();
+	}
 }
 
 $invoiceRefDocs = [];
@@ -285,25 +292,11 @@ foreach ($object->lines as $line) {
 		}
 	}
 
-	// VAT category
-	if ($line->tva_tx > 0) {
-		if (empty($mysoc->tva_intra)) {
-			throw new Exception('BADVATNUMBER: The VAT number of the thirdparty ' . $object->thirdparty->name . ' is mandatory when there is a non null VAT on at least on line.');
-		}
-		if (!$this->checkIfVatRateIsValid($line->tva_tx, $mysoc->country_code)) {
-			throw new Exception('BADVATRATE[BR-FR-16]: The VAT rate ' . $line->tva_tx . ' on line ' . $line->id . ' is not a valid string value for country ' . $mysoc->country_code . '.');
-		}
-		$categoryVAT = 'S';
-	} else {
-		$categoryVAT = 'K';
-		if (empty($mysoc->tva_assuj)) {
-			$categoryVAT = 'E';
-		} elseif (!$invoice->thirdparty->isInEEC()) {
-			$categoryVAT = 'G';
-		} elseif ($mysoc->isInEEC() && $invoice->thirdparty->isInEEC() && $mysoc->country_code != $invoice->thirdparty->country_code) {
-			$categoryVAT = 'K';
-		}
-	}
+	// VAT category and exemption reason of the line
+	$tmparray = $this->getCategoryRate($line->tva_tx, $line->id, $mysoc, $object);
+	$categoryVAT = $tmparray['categoryVAT'];
+	$exemptionReason = $tmparray['ExemptionReason'];
+	$exemptionReasonCode = $tmparray['ExemptionReasonCode'];
 
 	// Billing period of the line
 	$linePeriodStart = null;
@@ -317,16 +310,56 @@ foreach ($object->lines as $line) {
 		$linePeriodEnd = $this->_tsToDateTime($line->date_end);
 	}
 
+
+	// Set amounts for the line
+
+	$line_unit_price = $line->subprice;
+	$line_unit_price = price2num($line_unit_price, 2);		// Must be rounded to 2 digits. Not used directly, may be used as intermediate data.
+
+	$line_unit_price_ttc = $line->subprice_ttc;
+	$line_unit_price_ttc = price2num($line_unit_price_ttc, 2);	// Must be rounded to 2 digits.
+
+	$amountdiscount = 0;
+	$line_unit_price_with_discount = $line_unit_price;
+	if ($line->remise_percent) {
+		$amountdiscount = price2num($line_unit_price * $line->remise_percent / 100, 2);
+		$line_unit_price_with_discount = price2num($line_unit_price - $amountdiscount, 2);
+	}
+
+	// We need to recalculate the total using the Unit price rounded (netpriceamount) * Quantity, and rounding all temporary calculations to 2.
+	// This means we may get a different result than Dolibarr default calculation if:
+	// - MAIN_APPLY_DISCOUNT_ON_UNIT_PRICE_THEN_ROUND_BEFORE_MULTIPLICATION_BY_QTY was not set (if Einvoice is on, it is recommended to set it to 2 or 'MU' with unit price of 2, so accuracy will be reduced to match einvoice rule)
+	// or if
+	// - MAIN_APPLY_DISCOUNT_ON_UNIT_PRICE_THEN_ROUND_BEFORE_MULTIPLICATION_BY_QTY is set to a value different than 2, or, if set to 'MU', if the currency accuracy for unit price has a different number of decimals than 2.
+	$line_total_ht = price2num($line_unit_price_with_discount * $line->qty, 2);
+	$line_total_tva = price2num($line_unit_price_with_discount * $line->qty * ($line->tva_tx > 0 ? number_format($line->tva_tx, 2, '.', '') / 100 : 0), 2);
+	$line_total_ttc = price2num($line_total_ht + $line_total_tva, 2);
+
+	// Uncomment for test using the most accurate possible calculation (but not following the e-invoice rule to round to 2 digit at each step)
+	/*
+	$line_unit_price = price2num($line->subprice, 'MU');
+	$line_unit_price_with_discount = price2num($line->subprice * (1 - $line->remise_percent / 100), 'MU');
+	$line_total_ht = $line->total_ht;
+	$line_total_tva = $line->total_tva;
+	$line_total_ttc = $line->total_ttc;
+	*/
+
+
 	// Cumulative VAT totals
 	if (!isset($tabTVA[$line->tva_tx])) {
 		$tabTVA[$line->tva_tx] = ['totalHT' => 0, 'totalTVA' => 0];
 	}
-	$tabTVA[$line->tva_tx]['totalHT']  += $line->total_ht;
-	$tabTVA[$line->tva_tx]['totalTVA'] += $line->total_tva;
+	$tabTVA[$line->tva_tx]['totalHT']  += $line_total_ht;
+	$tabTVA[$line->tva_tx]['totalTVA'] += $line_total_tva;
+	$tabTVA[$line->tva_tx]['categoryVAT'] = $categoryVAT;
+	$tabTVA[$line->tva_tx]['ExemptionReasonCode'] = $exemptionReasonCode;
+	$tabTVA[$line->tva_tx]['ExemptionReason'] = $exemptionReason;
 
-	$grand_total_ht  += $line->total_ht;
-	$grand_total_ttc += $line->total_ttc;
-	$grand_total_tva += $line->total_tva;
+	$grand_total_ht  += $line_total_ht;
+	$grand_total_ttc += $line_total_ttc;
+	$grand_total_tva += $line_total_tva;
+
+
 
 	// Filling $linesData (based on $lineTemplate)
 	$linesData[$numligne] = [
@@ -346,11 +379,13 @@ foreach ($object->lines as $line) {
 		'prodClassificationScheme'  => null,
 		'prodOriginCountry'         => null,
 
-		'grosspriceamount'          => $line->subprice,
-		'grosspricebasisquantity'   => null,
-		'grosspricebasisquantityunitcode' => null,
-
-		'netpriceamount'            => $line->subprice,		// BT-148 / BT-146
+		// Mandatory by Factur-X, EN 16931
+		// This is the unit price, excluding tax. We can use
+		// $line_unit_price_with_discount
+		// or
+		//$line_unit_price but we must add block TradeAllowanceCharge
+		'netpriceamount'            => $line_unit_price_with_discount,		// BT-148 / BT-146
+		//'netpriceamount'            => $line_unit_price,		// BT-148 / BT-146
 		'netpricebasisquantity'     => null,
 		'netpricebasisquantityunitcode' => null,
 
@@ -361,15 +396,16 @@ foreach ($object->lines as $line) {
 		'packageQuantity'           => null,
 		'packageQuantityunitcode'   => null,
 
-		'lineTotalAmount'           => $line->total_ht,
+		'lineTotalAmount'           => $line_total_ht,
 		'totalAllowanceChargeAmount' => null,
 
+		// For section ApplicableTradeTax
 		'categoryCode'              => $categoryVAT,
 		'typeCode'                  => 'VAT',
 		'rateApplicablePercent'     => $line->tva_tx > 0 ? number_format($line->tva_tx, 2, '.', '') : '0.00',
 		'calculatedAmount'          => null,
-		'exemptionReason'           => null,
-		'exemptionReasonCode'       => null,
+		'ExemptionReason'           => null,
+		'ExemptionReasonCode'       => null,
 
 		'lineAllowances'            => [],
 		'lineGrossPriceAllowances'  => [],
@@ -389,6 +425,21 @@ foreach ($object->lines as $line) {
 		'fk_remise'                 => $line->fk_remise_except ?? null,
 	];
 
+
+	// For block TradeAllowanceCharge
+	// We must add this to add the section TradeAllowanceCharge if we defined a netpriceamount with $line_unit_price instead of $line_unit_price_with_discount
+	$linesData[$numligne]['allowancebasisamount'] = $line_unit_price;
+	$linesData[$numligne]['allowanceactualamount'] = $amountdiscount;
+
+	// If a unit price inluding tax is known (rarely)
+	if ($line_unit_price_ttc) {
+		// This section seems not required.
+		// It can be used if the price base is including tax (TTC) and without discount (= Catalog public unit price for individual customers)
+		$linesData[$numligne]['grosspriceamount'] = $line_unit_price_ttc;
+		$linesData[$numligne]['grosspricebasisquantity'] = null;
+		$linesData[$numligne]['grosspricebasisquantityunitcode'] = null;
+	}
+
 	$numligne++;
 }
 
@@ -400,7 +451,7 @@ $prepaidAmount  = $object->sumpayed + $getAlreadyPaid;
 // Delivery date
 $deliveryDate = !empty($deliveryDateList)
 	? new DateTime(dol_print_date($deliveryDateList[0], 'dayrfc'))
-	: new DateTime(dol_print_date($invoice->date, 'dayrfc'));
+	: new DateTime(dol_print_date($object->date, 'dayrfc'));
 
 
 
@@ -422,7 +473,7 @@ $invoiceData = [
 	'invoicingPeriodEnd'   => null,
 
 	'businessProcessId'    => $this->getBillingProcessID($object),		// B1, B2, B3, B4 / S1, S2, S3, S4 / M1, M2, M3, M4
-	'isTestDocument'       => !empty($invoice->specimen),
+	'isTestDocument'       => !empty($object->specimen),
 
 	// Notes
 	'documentNotePublic'   => dol_concatdesc(
@@ -519,14 +570,14 @@ $invoiceData = [
 	'contractReference'         => $object->array_options['options_d4d_contract_number'] ?? null,
 	'despatchAdviceRef'         => null,
 
-	// VAT breakdown
+	// VAT breakdown for section ApplicableHeaderTradeSettlement
 	'taxBreakdown'              => $tabTVA,
 
 	// Internal data (useful for the builder)
 	'_chorus'                   => $chorus,
 	'_depositlines'             => $depositlines,
 	'_customerOrderReferenceList' => $customerOrderReferenceList,
-	'_project'                  => ($invoice->project instanceof Project) ? $invoice->project : null,
+	'_project'                  => ($object->project instanceof Project) ? $object->project : null,
 ];
 
 

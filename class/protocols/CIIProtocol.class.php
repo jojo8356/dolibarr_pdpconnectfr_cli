@@ -222,8 +222,8 @@ class CIIProtocol extends AbstractProtocol
 			'rateApplicablePercent' => './ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:RateApplicablePercent',
 			'calculatedAmount' => './ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:CalculatedAmount',
 
-			'exemptionReason' => './ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:ExemptionReason',
-			'exemptionReasonCode' => './ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:ExemptionReasonCode',
+			'ExemptionReason' => './ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:ExemptionReason',
+			'ExemptionReasonCode' => './ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax/ram:ExemptionReasonCode',
 
 			'lineAllowances' => [],
 			'lineGrossPriceAllowances' => [],
@@ -264,13 +264,15 @@ class CIIProtocol extends AbstractProtocol
 		// Call page to generate the invoice variables ($invoiceData, ...)
 		include dol_buildpath('pdpconnectfr/lib/buildinvoicelines.inc.php');
 		/**
+		 * @var Facture 			$object			The $invoice object used in entry on inc file, but completed.
 		 * @var array<mixed,mixed> 	$invoiceData
 		 * @var array<mixed,mixed> 	$linesData
-		 * @var Facture 			$object
-		 * @var Translate 			$outputlangs
-		 * @var string 				$outputlang
+		 * @var string 				$outputlang		Value of $outputlangs->defaultlang
+		 * @var Societe 			$mysoc
 		 * @var Account				$account
 		 * @var PdpConnectFr		$pdpconnectfr
+		 * @var string 				$schemdUri		Buyer scheme uri
+		 * @var string 				$uri			Buyer uri
 		 */
 
 		// Generate the XML file
@@ -429,21 +431,27 @@ class CIIProtocol extends AbstractProtocol
 
 		$line = new FactureLigne($this->db);
 		$line->desc = $langs->trans("Description") . " 1";
-		$line->qty = 1;
-		$line->subprice = 100;
-		$line->tva_tx = 20.0;
+		$line->qty = 5;
+		$line->subprice = 100.05;		// unit price (no discount yet)
+		$line->tva_tx = get_default_tva($thirdpartySeller, $thirdpartyBuyer);
 		$line->localtax1_tx = 0;
 		$line->localtax2_tx = 0;
-		$line->remise_percent = 0;
+		$line->remise_percent = 10;
 		$line->fk_product = 0;
-		$line->qty = 1;
-		$line->total_ht = 100;
-		$line->total_ttc = 120;
-		$line->total_tva = 20;
+
+		include_once DOL_DOCUMENT_ROOT.'/core/lib/price.lib.php';
+		// Force MAIN_APPLY_DISCOUNT_ON_UNIT_PRICE_THEN_ROUND_BEFORE_MULTIPLICATION_BY_QTY, so we are sure sample is valid at the initial object.
+		$conf->global->MAIN_APPLY_DISCOUNT_ON_UNIT_PRICE_THEN_ROUND_BEFORE_MULTIPLICATION_BY_QTY = 2;
+
+		$tmp = calcul_price_total($line->qty, $line->subprice, $line->remise_percent, $line->tva_tx, 0, 0, 0, 'HT', 0, 0);
+
+		$line->total_ht = $tmp[0];
+		$line->total_ttc = $tmp[2];
+		$line->total_tva = $tmp[1];
 		$line->multicurrency_tx = 2;
-		$line->multicurrency_total_ht = 200;
-		$line->multicurrency_total_ttc = 240;
-		$line->multicurrency_total_tva = 40;
+		$line->multicurrency_total_ht = 2 * $line->total_ht;
+		$line->multicurrency_total_ttc = 2 * $line->total_ttc;
+		$line->multicurrency_total_tva = 2 * $line->total_tva;
 
 		$tmpinvoice->lines[] = $line;
 
@@ -532,13 +540,17 @@ class CIIProtocol extends AbstractProtocol
 
 		// Move CII xml file into the temp directory
 		if (is_numeric($pathOfXml) && $pathOfXml < 0) {
-			return $pathOfXml;
+			$result = $pathOfXml;
 		} else {
 			$newPathOfXml = dirname($pathOfXml) . '/temp/' . basename($pathOfXml);
 			dol_move($pathOfXml, $newPathOfXml, '0', 1);
 
-			return array('path' => $newPathOfXml, 'ref' => $tmpinvoice->ref);
+			$result = array('path' => $newPathOfXml, 'ref' => $tmpinvoice->ref);
 		}
+
+		// exit;
+
+		return $result;
 	}
 
 	/**
@@ -1352,8 +1364,8 @@ class CIIProtocol extends AbstractProtocol
 						'rateApplicablePercent' => $this->toFloat($this->getXPathValue($xpath, 'ram:RateApplicablePercent', $n)),
 						'calculatedAmount' => $this->toFloat($this->getXPathValue($xpath, 'ram:CalculatedAmount', $n)),
 						'basisAmount' => $this->toFloat($this->getXPathValue($xpath, 'ram:BasisAmount', $n)),
-						'exemptionReason' => $this->getXPathValue($xpath, 'ram:ExemptionReason', $n),
-						'exemptionReasonCode' => $this->getXPathValue($xpath, 'ram:ExemptionReasonCode', $n),
+						'ExemptionReason' => $this->getXPathValue($xpath, 'ram:ExemptionReason', $n),
+						'ExemptionReasonCode' => $this->getXPathValue($xpath, 'ram:ExemptionReasonCode', $n),
 					];
 					break;
 
@@ -1529,9 +1541,16 @@ class CIIProtocol extends AbstractProtocol
 		$this->buildParty($doc, $agreement, $invoiceData, 'seller');
 		$this->buildParty($doc, $agreement, $invoiceData, 'buyer');
 
+
 		// DELIVERY
 		$delivery = $doc->createElement('ram:ApplicableHeaderTradeDelivery');
 		$sctt->appendChild($delivery);
+
+		// Add the ship to trade party (mandatory when using intracommunity delivery)
+		$shiptotrade = $doc->createElement('ram:ShipToTradeParty');
+		$delivery->appendChild($shiptotrade);
+		$this->buildParty($doc, $shiptotrade, $invoiceData, 'buyer');
+
 
 		if (!empty($invoiceData['documentDeliveryDate'])) {
 			$event = $doc->createElement('ram:ActualDeliverySupplyChainEvent');
@@ -1547,6 +1566,10 @@ class CIIProtocol extends AbstractProtocol
 			$str->setAttribute('format', '102');
 			$dtNode->appendChild($str);
 		}
+
+
+
+
 
 		// SETTLEMENT
 		$settlement = $doc->createElement('ram:ApplicableHeaderTradeSettlement');
@@ -1582,10 +1605,10 @@ class CIIProtocol extends AbstractProtocol
 			}
 		}
 
-		// TVA
-		foreach ($invoiceData['taxBreakdown'] as $rate => $vals) {
+		// VAT array by rate
+		foreach ($invoiceData['taxBreakdown'] as $rate => $vals) {		// $rate is 0, 20.0, ..., $vals is a float value
 			$settlement->appendChild(
-				$this->buildTaxNode($doc, $rate, $vals, $invoiceData['invoiceCurrency'])
+				$this->buildTaxNode($doc, $rate, $vals, $invoiceData['invoiceCurrency']) 	// ApplicableTradeTax
 			);
 		}
 
@@ -1679,13 +1702,20 @@ class CIIProtocol extends AbstractProtocol
 		$price = $doc->createElement('ram:SpecifiedLineTradeAgreement');
 		$el->appendChild($price);
 
-		$gross = $doc->createElement('ram:GrossPriceProductTradePrice');
-		$price->appendChild($gross);
-		$gross->appendChild($doc->createElement('ram:ChargeAmount', number_format($line['grosspriceamount'], 2, '.', '')));
+		// This section seems not required.
+		// It can be used if the price base is including tax (TTC) and without discount (= Catalog public unit price for individual customers)
+		if (isset($line['grosspriceamount'])) {
+			$gross = $doc->createElement('ram:GrossPriceProductTradePrice');
+			$price->appendChild($gross);
+			$gross->appendChild($doc->createElement('ram:ChargeAmount', number_format($line['grosspriceamount'], 2, '.', '')));
+		}
 
+		// Mandatory by Factur-X, EN 16931
+		// This is the unit price, including the discount (if any) but excluding tax.
 		$net = $doc->createElement('ram:NetPriceProductTradePrice');
 		$price->appendChild($net);
 		$net->appendChild($doc->createElement('ram:ChargeAmount', number_format($line['netpriceamount'], 2, '.', '')));
+
 
 		// Quantity
 		$deliv = $doc->createElement('ram:SpecifiedLineTradeDelivery');
@@ -1699,12 +1729,35 @@ class CIIProtocol extends AbstractProtocol
 		$sett = $doc->createElement('ram:SpecifiedLineTradeSettlement');
 		$el->appendChild($sett);
 
+
+		// Add section ...AllowanceCharge
+		/*
+		if ($line['allowanceactualamount']) {
+			$allowance = $doc->createElement('ram:SpecifiedTradeAllowanceCharge');
+			$sett->appendChild($allowance);
+
+			$chargeindicator = $doc->createElement('ram:ChargeIndicator', 'false');
+			$allowance->appendChild($chargeindicator);
+			$chargereason = $doc->createElement('ram:AllowanceChargeReason', 'Relative discount');
+			$allowance->appendChild($chargereason);
+			$basisamount = $doc->createElement('ram:BasisAmount', $line['allowancebasisamount']);
+			$allowance->appendChild($basisamount);
+			$actualamount = $doc->createElement('ram:ActualAmount', $line['allowanceactualamount']);
+			$allowance->appendChild($actualamount);
+			$calculationpercent = $doc->createElement('ram:CalculationPercent', $line['lineremisepercent']);
+			$allowance->appendChild($calculationpercent);
+		}
+		*/
+
+		// Add the VAT block for the line
 		$tax = $doc->createElement('ram:ApplicableTradeTax');
 		$sett->appendChild($tax);
 
 		$tax->appendChild($doc->createElement('ram:TypeCode', 'VAT'));
 		$tax->appendChild($doc->createElement('ram:CategoryCode', $line['categoryCode']));
 		$tax->appendChild($doc->createElement('ram:RateApplicablePercent', $line['rateApplicablePercent']));
+		// What about the ExemptionReasonCode and ExemptionReasonCode ?
+
 
 		// Total line
 		$sum = $doc->createElement('ram:SpecifiedTradeSettlementLineMonetarySummation');
@@ -1849,9 +1902,18 @@ class CIIProtocol extends AbstractProtocol
 
 		$tax->appendChild($doc->createElement('ram:TypeCode', 'VAT'));
 
+		if ($vals['ExemptionReason']) {
+			$tax->appendChild($doc->createElement('ram:ExemptionReason', $vals['ExemptionReason']));
+		}
+
 		$tax->appendChild($doc->createElement('ram:BasisAmount', number_format($vals['totalHT'], 2, '.', '')));
 
-		$tax->appendChild($doc->createElement('ram:CategoryCode', $rate > 0 ? 'S' : 'Z'));
+		$tax->appendChild($doc->createElement('ram:CategoryCode', $vals['categoryVAT']));
+
+		if ($vals['ExemptionReasonCode']) {
+			$tax->appendChild($doc->createElement('ram:ExemptionReasonCode', $vals['ExemptionReasonCode']));
+		}
+
 		$tax->appendChild($doc->createElement('ram:RateApplicablePercent', number_format($rate, 2, '.', '')));
 
 		return $tax;
@@ -2048,52 +2110,5 @@ class CIIProtocol extends AbstractProtocol
 		sort($customerOrderReferenceList);
 		$deliveryDateList = array_unique($deliveryDateList);
 		rsort($deliveryDateList);
-	}
-
-
-	/************************************************
-	 *    Check line type from external module ?
-	 *
-	 * @param  object $line       line we work on
-	 * @param  string $element    line object element (for special case like shipping)
-	 * @param  string $searchName module name we look for
-	 * @return boolean                        true if the line is a special one and was created by the module we ask for
-	 ************************************************/
-	private function _isLineFromExternalModule($line, $element, $searchName)
-	{
-		// TODO: move this function to class utils
-		global $db;
-		if ($element == 'shipping' || $element == 'delivery') {
-			$fk_origin_line = $line->fk_origin_line;
-			$line = new OrderLine($db);
-			$line->fetch($fk_origin_line);
-		}
-		if ($line->product_type == 9 && $line->special_code == $this->_getModNumber($searchName)) {
-			return true;
-		} else {
-			return false;
-		}
-	}
-
-	/**
-	 * Check if a given VAT rate is valid for a specific country based on the c_tva table in the database.
-	 *
-	 * @param 	string	$vatrate		Vat rate to check (e.g. '20' for 20%)
-	 * @param 	string	$countryCode	Country code to check the VAT rate against (e.g. 'FR' for France)
-	 * @return 	boolean					Returns true if the VAT rate is valid for the given country, false otherwise.
-	 * TODO Move common function into an implemented CommonXProtocol.class.php if needed by other protocol handlers
-	 */
-	public function checkIfVatRateIsValid($vatrate, $countryCode)
-	{
-		if ($countryCode == 'FR') {
-			// Check rule BR-FR-16 For AFNOR Einvoice - List in XP-Z12-012
-			$validRatesString = ['0', '10', '13', '20', '8.5', '19.6', '2.1', '5.5', '7', '20.6', '1.05', '0.9', '1.75', '9.2', '9.6'];
-			//$valtotest = price2num((float) $vatrate, '', 1);
-			if (!in_array($vatrate, $validRatesString)) {
-				return false;
-			}
-		}
-
-		return true;
 	}
 }
