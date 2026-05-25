@@ -474,10 +474,10 @@ class FacturXProtocol extends AbstractProtocol
 
 		$filename = dol_sanitizeFileName($invoice->ref);
 		$filedir = getMultidirOutput($invoice, '', 1);
-		$orig_pdf = $filedir . '/' . $filename . '.pdf';
+		$orig_pdf = $filedir . '/' . get_exdir(0, 0, 0, 0, $invoice, 'invoice') . '/' . $filename . '.pdf';
 
 		// Make a copy of the original PDF file
-		$pathfacturxpdf = $filedir . '/' . $filename . '_facturx.pdf';	// The new name of the PDF including xml
+		$pathfacturxpdf = $filedir . '/' . get_exdir(0, 0, 0, 0, $invoice, 'invoice') . $filename . '_facturx.pdf';	// The new name of the PDF including xml
 		if (dol_copy($orig_pdf, $pathfacturxpdf)) {
 			dol_syslog(get_class($this) . "::generateInvoice copied original PDF to " . $pathfacturxpdf);
 		} else {
@@ -568,12 +568,19 @@ class FacturXProtocol extends AbstractProtocol
 			}
 
 			// Restore metadata from original PDF.
+			// horstoeko/zugferd setters require non-null strings, so default to '' for Dolibarr
+			// versions that do not ship pdfExtractMetadata() (v18 / v19); v22+ overwrites these
+			// with the actual values parsed from the source PDF.
+			$keywords = '';
+			$subject = '';
+			$author = '';
+			$creator = '';
 			if (function_exists('pdfExtractMetadata')) {	// From Dolibarr v22
 				// Now we get the metadata keywords from the $sourcefile PDF (by parsing the binary PDF file)
-				$keywords = pdfExtractMetadata($orig_pdf, 'Keywords');
-				$subject = pdfExtractMetadata($orig_pdf, 'Subject');
-				$author = pdfExtractMetadata($orig_pdf, 'Author');
-				$creator = pdfExtractMetadata($orig_pdf, 'Creator');
+				$keywords = (string) pdfExtractMetadata($orig_pdf, 'Keywords');
+				$subject = (string) pdfExtractMetadata($orig_pdf, 'Subject');
+				$author = (string) pdfExtractMetadata($orig_pdf, 'Author');
+				$creator = (string) pdfExtractMetadata($orig_pdf, 'Creator');
 			}
 
 			$merger = new ZugferdDocumentPdfMerger($xmlfile, $orig_pdf);
