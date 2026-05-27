@@ -1,6 +1,7 @@
 <?php
 /* Copyright (C) 2025       Laurent Destailleur         <eldy@users.sourceforge.net>
  * Copyright (C) 2025       Mohamed DAOUD               <mdaoud@dolicloud.com>
+ * Copyright (C) 2026		William Mead				<william@m34d.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,7 +65,7 @@ class PdpConnectFr
 	public const STATUS_AWAITING_ACK        = 20;
 	public const STATUS_ERROR               = 25;
 
-	public const STATUS_IGNORE              = 99;		// To not sync
+	public const STATUS_IGNORE              = 99;		// Never sync
 
 	// PDP / PA normalized statuses
 	// public const STATUS_DEPOSITED           = 200;
@@ -737,7 +738,7 @@ class PdpConnectFr
 		$baseErrors = [];
 		$baseWarnings = [];
 
-		$einvoiceid = $this->getSellerCommunicationURI();
+		$einvoiceid = $this->getSellerCommunicationURI();	// Force value to '' if routing value does not match prof id.
 
 		// Error message if we failed to found the einvoiceid
 		if (empty($einvoiceid)) {
@@ -750,10 +751,12 @@ class PdpConnectFr
 
 					$uriConf = 'PDPCONNECTFR_' . strtoupper($provider) . '_ROUTING_ID';
 					$einvoiceid = getDolGlobalString($uriConf);
+
+					//PDPCONNECTFR_LIVE
 					if (!preg_match('/^' . preg_replace('/\s+/', '', $mysoc->idprof1) . '/', $this->removeSpaces($einvoiceid))) {
-						$baseWarnings[] = $langs->trans("FxCheckErrorRoutingIDFR", $einvoiceid);
+						$baseWarnings[] = $langs->trans("FxCheckErrorRoutingIDFR", $einvoiceid);	// Your company profid must match the routing ID
 					} else {
-						$baseErrors[] = $langs->trans("FxCheckErrorRoutingID");
+						$baseErrors[] = $langs->trans("FxCheckErrorRoutingID");	// Your company does not have a valid prof id
 					}
 				} else {
 					$baseErrors[] = $langs->trans("FxCheckErrorRoutingID");
@@ -1249,30 +1252,32 @@ class PdpConnectFr
 				$resprints .= $form->editfieldkey($form->textwithpicto($langs->trans("InvoiceRoutingOverride"), $langs->trans("InvoiceRoutingOverrideHelp")), 'override_routing_id', '', $object, (int) $editenable);
 				$resprints .= '</td>';
 				$resprints .= '<td>';
+				// Build select options: first option = thirdparty default (empty = no override)
+				$selectOptions = array('' => $langs->trans("InvoiceRoutingOverrideDefault"));
+				foreach ($allRoutings as $r) {
+					$label = $r['routing_id'];
+					$routing_id = $r['routing_id'];
+					if ($r['is_default']) {
+						$label .= ' (' . $langs->trans("Default") . ')';
+					}
+					if (!empty($r['info'])) {
+						$label .= ' — ' . $r['info'];
+						$routing_id .= '_' . $r['info'];
+					}
+					$selectOptions[$routing_id] = $label;
+				}
 				if ($action == 'editoverride_routing_id') {
 					$resprints .= '<form name="setoverrriderouting" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="post">';
 					$resprints .= '<input type="hidden" name="token" value="' . newToken() . '">';
 					$resprints .= '<input type="hidden" name="action" value="setoverriderouting">';
 					$resprints .= '<input type="hidden" name="page_y" value="page_y">';
 
-					// Build select options: first option = thirdparty default (empty = no override)
-					$selectOptions = array('' => $langs->trans("InvoiceRoutingOverrideDefault"));
-					foreach ($allRoutings as $r) {
-						$label = $r['routing_id'];
-						if ($r['is_default']) {
-							$label .= ' (' . $langs->trans("Default") . ')';
-						}
-						if (!empty($r['info'])) {
-							$label .= ' — ' . $r['info'];
-						}
-						$selectOptions[$r['routing_id']] = $label;
-					}
 					$resprints .= $form->selectarray('override_routing_id', $selectOptions, $currentOverrideRouting, 0, 0, 0, '', 1);
 					$resprints .= '<input type="submit" class="button button-edit smallpaddingimp reposition" value="' . $langs->trans('Modify') . '">';
 					$resprints .= '</form>';
 				} else {
 					if (!empty($currentOverrideRouting)) {
-						$resprints .= dol_escape_htmltag($currentOverrideRouting);
+						$resprints .= dol_escape_htmltag($selectOptions[$currentOverrideRouting]);
 					} else {
 						$resprints .= '<span class="opacitymedium">' . $langs->trans("InvoiceRoutingOverrideDefault") . '</span>';
 					}
@@ -1687,7 +1692,14 @@ class PdpConnectFr
 			$resprints .= '<tr class="trpdpconnect_collapseseparator trrouting_product_id '.($expand_display ? '' : 'hidden').'">';
 			$resprints .= '<td>' . $form->textwithpicto($langs->trans("DefaultProductEBilling"), $langs->trans("DefaultProductEBillingHelp")) . '</td>';
 			$resprints .= '<td'.(empty($parameters['colspanvalue']) ? '' : ' colspan="'.(((int) $parameters['colspanvalue']) -1).'"').'>';
-			$resprints .= $form->select_produits_fournisseurs($object->id, $product_id, 'routing_product_id', '', '', array(), 0, 1, '', '', 1);
+			if (version_compare(DOL_VERSION, '22.0.0', '<')) {
+				// Before v22, select_produits_fournisseurs() uses print instead of return
+				ob_start();
+				$form->select_produits_fournisseurs($object->id, $product_id, 'routing_product_id', '', '', array(), 0, 1);
+				$resprints .= ob_get_clean();
+			} else {
+				$resprints .= $form->select_produits_fournisseurs($object->id, $product_id, 'routing_product_id', '', '', array(), 0, 1, '', '', 1);
+			}
 			$resprints .= '</td>';
 			$resprints .= '</tr>';
 
@@ -1846,7 +1858,7 @@ class PdpConnectFr
 	 *
 	 * @param int			$invoiceId		Invoice ID
 	 * @param string		$invoiceRef		Invoice ref
-	 * @return string[]|number[]|mixed[][]|mixed[]
+	 * @return string[]|float[]|mixed[][]|mixed[]
 	 */
 	public function fetchLastknownInvoiceStatus($invoiceId = 0, $invoiceRef = '')
 	{
@@ -2264,8 +2276,12 @@ class PdpConnectFr
 		}
 
 		$obj = $db->fetch_object($resql);
+		$routing_id =  (string) $obj->routing_id;
+		if (!empty($obj->info)) {
+			$routing_id .= '_' . $obj->info;
+		}
 
-		return (string) $obj->routing_id;
+		return $routing_id;
 	}
 
 
@@ -2589,8 +2605,10 @@ class PdpConnectFr
 				if (!empty($einvoiceid)) {
 					$einvoiceid = $this->removeSpaces($einvoiceid);
 					if (!preg_match('/^' . preg_replace('/\s+/', '', $mysoc->idprof1) . '/', $einvoiceid)) {
-						dol_syslog("Error: The seller communication URI seems not correct (should be or start with your SIRET number). Value: " . $einvoiceid, LOG_ERR);
-						$einvoiceid = '';
+						if (getDolGlobalString('PDPCONNECTFR_LIVE')) {	// In live mode, we do not allow profid1 not matching routing id
+							dol_syslog("Error: The seller communication URI seems not correct (should be or start with your SIRET number). Value: " . $einvoiceid, LOG_WARNING);
+							$einvoiceid = '';
+						}
 					}
 				}
 			}
