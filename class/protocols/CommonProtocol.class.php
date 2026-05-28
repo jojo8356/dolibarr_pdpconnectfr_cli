@@ -1041,18 +1041,15 @@ trait CommonProtocol
 						$exemptionReason = getDolGlobalString('MAIN_INFO_SOCIETE_VAT_EXEMPTION_REASON');
 						if ($seller->country_code == 'FR') {
 							// List of VATEX: https://docs.peppol.eu/poacc/billing/3.0/codelist/vatex/
-							// TVA non applicable article 293B CGI (auto-entrepreneurs, volume sous seuil): VATEX-FR-FRANCHISE (rule BR-FR-CO-16)
-							// TVA non applicable article 261-4 CGI (nature non soumis à TVA, comme médecin): VATEX-FR-CGI261-4
-							// TVA non applicable - Vente objet :  art = VATEX-FR-I, antiquité = VATEX-FR-J
-							// TVA non applicable - Vente agence voyage:  VATEX-EU-D
-							$exemptionReasonCode = getDolGlobalString('MAIN_INFO_SOCIETE_VAT_EXEMPTION_CODE', 'VATEX-FR-FRANCHISE');		// VATEX-FR-FRANCHISE, VATEX-FR-CGI261-1, VATEX-FR-CGI261-4, ...
+							// TVA non applicable article 293B CGI (auto-entrepreneurs, volume sous seuil, defined into setup of company):   VATEX-FR-FRANCHISE (rule BR-FR-CO-16), the default one
+							$exemptionReasonCode = getDolGlobalString('MAIN_INFO_SOCIETE_VAT_EXEMPTION_CODE', 'VATEX-FR-FRANCHISE');		// VATEX-FR-FRANCHISE, VATEX-FR-CGI261-1, VATEX-FR-CGI261-4, VATEX-EU-79-C...
 							$exemptionReason = getDolGlobalString('MAIN_INFO_SOCIETE_VAT_EXEMPTION_REASON', 'Tax exempted - TVA en franchise');
 						}
 						if (empty($exemptionReasonCode)) {
 							if ((float) DOl_VERSION < 24.0) {
-								throw new Exception('MISSINGSETUP: Your organization is configured to not use VAT. In this case, you must enter into the constant MAIN_INFO_SOCIETE_VAT_EXEMPTION_CODE the reason code of exemption (VATEX-FR-CGI261-4, VATEX-FR-CGI261-4.');
+								throw new Exception('MISSINGSETUP: Your organization is configured to not use VAT. In this case, you must enter into the constant MAIN_INFO_SOCIETE_VAT_EXEMPTION_CODE the reason code of exemption (VATEX-FR-CGI261-1, VATEX-FR-CGI261-4, VATEX-EU-79C.');
 							} else {
-								throw new Exception('MISSINGSETUP: Your organization is configured to not use VAT. In this case, you must enter into the reason code of exemption in the setup of your organization (VATEX-FR-CGI261-4, VATEX-FR-CGI261-4.');
+								throw new Exception('MISSINGSETUP: Your organization is configured to not use VAT. In this case, you must enter into the reason code of exemption in the setup of your organization (VATEX-FR-CGI261-1, VATEX-FR-CGI261-4, VATEX-EU-79C.');
 							}
 						}
 					}
@@ -1070,9 +1067,38 @@ trait CommonProtocol
 					// The sell is from an EU country to the same country, reason depends on the product line itself (reason saved into the VAT rate/code used)
 					if ((float) DOL_VERSION < 24.0) {
 						// We must use the reason found in the constant MAIN_VAT_EXEMPTION_CODE_FOR_0.00_XXXX
+						// List of VATEX: https://docs.peppol.eu/poacc/billing/3.0/codelist/vatex/
+						// TVA non applicable article 261-4 CGI (nature non soumis à TVA, comme médecin): VATEX-FR-CGI261-4
+						// TVA non applicable - Vente objet art :       VATEX-FR-I
+						// TVA non applicable - Vente objet antiquité : VATEX-FR-J
+						// TVA non applicable - Vente agence voyage:    VATEX-EU-D
+						// TVA non applicable - Debours (VAT paid by customer):  VATEX-EU-79-C
+						$vatex = '';
+
+						// We try to find code in the vat code definition in the dictionnary table (code only because einvoice_vatex does not exists).
+						global $db, $mysoc;
+
+						$sql = "SELECT code FROM ".MAIN_DB_PREFIX."c_tva";
+						$sql .= " WHERE taux = ".((float) $vat_rate);
+						$sql .= " AND active = 1";
+						$sql .= " AND fk_pays = ".((int) $mysoc->country_id);
+						$sql .= " AND (code = '".$db->escape($vat_src_code)."')";
+						$resql = $db->query($sql);
+						if ($resql) {
+							$obj = $db->fetch_object($resql);
+							if ($obj) {
+								if (preg_match('/^VATEX/i', $obj->code)) {
+									$vatex = strtoupper((string) $obj->code);
+								}
+							}
+						}
+
 						$vat_rate = price2num($vat_rate, 2);
-						$constantforvatex = "MAIN_VAT_EXEMPTION_CODE_FOR_" . $vat_rate.($vat_src_code ? "_". $vat_src_code : '');
-						$vatex = getDolGlobalString($constantforvatex);
+
+						if (empty($vatex)) {
+							$constantforvatex = "MAIN_VAT_EXEMPTION_CODE_FOR_" . $vat_rate.($vat_src_code ? "_". $vat_src_code : '');
+							$vatex = strtoupper(getDolGlobalString($constantforvatex));
+						}
 
 						if (empty($vatex)) {
 							$errormsg = $langs->trans("UnknownVATEX1", $id, '0', $vat_src_code);
@@ -1085,10 +1111,12 @@ trait CommonProtocol
 							$exemptionReason = '';
 						}
 					} else {
-						// We must use the reason found on the vat code definition in the dictionnary table.
+						$vatex = '';
+
+						// We try to find code in the vat code definition in the dictionnary table (einvoice_vatex else code).
 						global $db, $mysoc;
 
-						$sql = "SELECT einvoice_vatex FROM ".MAIN_DB_PREFIX."c_tva";
+						$sql = "SELECT code, einvoice_vatex FROM ".MAIN_DB_PREFIX."c_tva";
 						$sql .= " WHERE taux = ".((float) $vat_rate);
 						$sql .= " AND active = 1";
 						$sql .= " AND fk_pays = ".((int) $mysoc->country_id);
@@ -1097,7 +1125,10 @@ trait CommonProtocol
 						if ($resql) {
 							$obj = $db->fetch_object($resql);
 							if ($obj) {
-								$vatex = $obj->einvoice_vatex;
+								$vatex = strtoupper((string) $obj->einvoice_vatex);
+								if (empty($vatex) && preg_match('/^VATEX/i', $obj->code)) {
+									$vatex = strtoupper((string) $obj->code);
+								}
 							}
 						}
 
