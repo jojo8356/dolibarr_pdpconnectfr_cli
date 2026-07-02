@@ -121,11 +121,20 @@ final class Docli extends CLI
 		$options->registerCommand('thirdparty:create', 'Create a third party.');
 		$this->registerThirdpartyCreateOptions($options, 'thirdparty:create', true);
 
+		$options->registerCommand('thirdparty:update', 'Update a third party.');
+		$this->registerThirdpartyUpdateOptions($options, 'thirdparty:update', true);
+
 		$options->registerCommand('prospect:create', 'Create a prospect.');
 		$this->registerThirdpartyCreateOptions($options, 'prospect:create', false);
 
+		$options->registerCommand('prospect:update', 'Update a prospect and keep it as prospect.');
+		$this->registerThirdpartyUpdateOptions($options, 'prospect:update', false);
+
 		$options->registerCommand('customer:create', 'Create a customer.');
 		$this->registerThirdpartyCreateOptions($options, 'customer:create', false);
+
+		$options->registerCommand('customer:update', 'Update a customer and keep it as customer.');
+		$this->registerThirdpartyUpdateOptions($options, 'customer:update', false);
 
 		$options->registerCommand('thirdparty:get', 'Fetch a third party by ID, SIREN, SIRET, or email.');
 		$this->registerCommonOptions($options, 'thirdparty:get');
@@ -152,20 +161,10 @@ final class Docli extends CLI
 		$options->registerOption('limit', 'Maximum number of third parties.', null, 'N', 'other:list');
 
 		$options->registerCommand('contact:create', 'Create a contact/address linked to a third party.');
-		$this->registerCommonOptions($options, 'contact:create');
-		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'contact:create');
-		$options->registerOption('lastname', 'Last name.', null, 'NAME', 'contact:create');
-		$options->registerOption('firstname', 'First name.', null, 'NAME', 'contact:create');
-		$options->registerOption('alias', 'Alias.', null, 'ALIAS', 'contact:create');
-		$options->registerOption('job', 'Job title/function.', null, 'JOB', 'contact:create');
-		$options->registerOption('address', 'Postal address.', null, 'ADDRESS', 'contact:create');
-		$options->registerOption('zip', 'Postal code.', null, 'ZIP', 'contact:create');
-		$options->registerOption('town', 'City/town.', null, 'TOWN', 'contact:create');
-		$options->registerOption('country', 'ISO country code, for example FR.', null, 'CODE', 'contact:create');
-		$options->registerOption('phone', 'Professional phone number.', null, 'PHONE', 'contact:create');
-		$options->registerOption('mobile', 'Mobile phone number.', null, 'PHONE', 'contact:create');
-		$options->registerOption('email', 'Email address.', null, 'EMAIL', 'contact:create');
-		$options->registerOption('private', 'Create as private contact instead of shared third-party contact.', null, false, 'contact:create');
+		$this->registerContactOptions($options, 'contact:create', true);
+
+		$options->registerCommand('contact:update', 'Update a contact/address.');
+		$this->registerContactOptions($options, 'contact:update', false);
 
 		$options->registerCommand('contact:list', 'List contacts/addresses linked to a third party.');
 		$this->registerCommonOptions($options, 'contact:list');
@@ -242,11 +241,20 @@ final class Docli extends CLI
 				case 'thirdparty:create':
 					$this->exitCode = $this->thirdpartyCreate($options);
 					return;
+				case 'thirdparty:update':
+					$this->exitCode = $this->thirdpartyUpdate($options);
+					return;
 				case 'prospect:create':
 					$this->exitCode = $this->thirdpartyCreate($options, 'prospect');
 					return;
+				case 'prospect:update':
+					$this->exitCode = $this->thirdpartyUpdate($options, 'prospect');
+					return;
 				case 'customer:create':
 					$this->exitCode = $this->thirdpartyCreate($options, 'customer');
+					return;
+				case 'customer:update':
+					$this->exitCode = $this->thirdpartyUpdate($options, 'customer');
 					return;
 				case 'thirdparty:get':
 					$this->exitCode = $this->thirdpartyGet($options);
@@ -265,6 +273,9 @@ final class Docli extends CLI
 					return;
 				case 'contact:create':
 					$this->exitCode = $this->contactCreate($options);
+					return;
+				case 'contact:update':
+					$this->exitCode = $this->contactUpdate($options);
 					return;
 				case 'contact:list':
 					$this->exitCode = $this->contactList($options, (string) $options->getOpt('kind', 'all'));
@@ -344,6 +355,62 @@ final class Docli extends CLI
 		$options->registerOption('eori', 'EORI number, stored as idprof5.', null, 'EORI', $command);
 		$options->registerOption('rna', 'RNA number, stored as idprof6.', null, 'RNA', $command);
 		$options->registerOption('vat', 'VAT number.', null, 'VAT', $command);
+	}
+
+	private function registerThirdpartyUpdateOptions(Options $options, string $command, bool $withTypeFlags): void
+	{
+		$this->registerCommonOptions($options, $command);
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', $command);
+		$options->registerOption('name', 'Third-party legal name.', null, 'NAME', $command);
+		$options->registerOption('alias', 'Commercial name or brand.', null, 'ALIAS', $command);
+		if ($withTypeFlags) {
+			$options->registerOption('customer', 'Mark as customer.', null, false, $command);
+			$options->registerOption('prospect', 'Mark as prospect.', null, false, $command);
+			$options->registerOption('supplier', 'Mark as supplier.', null, false, $command);
+			$options->registerOption('no-supplier', 'Remove supplier status.', null, false, $command);
+		}
+		$options->registerOption('code-client', 'Customer/prospect code.', null, 'CODE', $command);
+		$options->registerOption('code-supplier', 'Supplier code.', null, 'CODE', $command);
+		$options->registerOption('address', 'Postal address.', null, 'ADDRESS', $command);
+		$options->registerOption('zip', 'Postal code.', null, 'ZIP', $command);
+		$options->registerOption('town', 'City/town.', null, 'TOWN', $command);
+		$options->registerOption('country', 'ISO country code, for example FR.', null, 'CODE', $command);
+		$options->registerOption('phone', 'Phone number.', null, 'PHONE', $command);
+		$options->registerOption('mobile', 'Mobile phone number.', null, 'PHONE', $command);
+		$options->registerOption('email', 'Email address.', null, 'EMAIL', $command);
+		$options->registerOption('web', 'Website URL.', null, 'URL', $command);
+		$options->registerOption('siren', 'French SIREN, stored as idprof1.', null, 'SIREN', $command);
+		$options->registerOption('siret', 'French SIRET, stored as idprof2.', null, 'SIRET', $command);
+		$options->registerOption('ape', 'NAF/APE code, stored as idprof3.', null, 'APE', $command);
+		$options->registerOption('rcs', 'RCS/RM, stored as idprof4.', null, 'RCS', $command);
+		$options->registerOption('eori', 'EORI number, stored as idprof5.', null, 'EORI', $command);
+		$options->registerOption('rna', 'RNA number, stored as idprof6.', null, 'RNA', $command);
+		$options->registerOption('vat', 'VAT number.', null, 'VAT', $command);
+	}
+
+	private function registerContactOptions(Options $options, string $command, bool $isCreate): void
+	{
+		$this->registerCommonOptions($options, $command);
+		if ($isCreate) {
+			$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', $command);
+		} else {
+			$options->registerOption('id', 'Dolibarr contact/address ID.', null, 'ID', $command);
+			$options->registerOption('socid', 'Move contact to another third party ID.', null, 'ID', $command);
+		}
+		$options->registerOption('lastname', 'Last name.', null, 'NAME', $command);
+		$options->registerOption('firstname', 'First name.', null, 'NAME', $command);
+		$options->registerOption('alias', 'Alias.', null, 'ALIAS', $command);
+		$options->registerOption('job', 'Job title/function.', null, 'JOB', $command);
+		$options->registerOption('address', 'Postal address.', null, 'ADDRESS', $command);
+		$options->registerOption('zip', 'Postal code.', null, 'ZIP', $command);
+		$options->registerOption('town', 'City/town.', null, 'TOWN', $command);
+		$options->registerOption('country', 'ISO country code, for example FR.', null, 'CODE', $command);
+		$options->registerOption('phone', 'Professional phone number.', null, 'PHONE', $command);
+		$options->registerOption('phone-perso', 'Personal phone number.', null, 'PHONE', $command);
+		$options->registerOption('mobile', 'Mobile phone number.', null, 'PHONE', $command);
+		$options->registerOption('email', 'Email address.', null, 'EMAIL', $command);
+		$options->registerOption('private', 'Create or keep as private contact.', null, false, $command);
+		$options->registerOption('public', 'Make the contact shared/non-private.', null, false, $command);
 	}
 
 	private function bootstrapDolibarr(): void
@@ -615,6 +682,94 @@ final class Docli extends CLI
 		return $this->output($this->thirdpartyData($thirdparty));
 	}
 
+	private function thirdpartyUpdate(Options $options, string $forcedKind = ''): int
+	{
+		$thirdparty = new Societe($this->db);
+		$result = $thirdparty->fetch($this->requiredInt($options, 'socid'));
+		if ($result <= 0) {
+			throw new RuntimeException('third party not found');
+		}
+
+		if ($this->optionProvided($options, 'name')) {
+			$thirdparty->name = trim((string) $options->getOpt('name'));
+			$thirdparty->nom = $thirdparty->name;
+		}
+		if ($this->optionProvided($options, 'alias')) {
+			$thirdparty->name_alias = (string) $options->getOpt('alias');
+		}
+		if ($forcedKind !== '') {
+			$thirdparty->client = $this->thirdpartyClientStatus($options, $forcedKind);
+		} elseif ($options->getOpt('customer') || $options->getOpt('prospect')) {
+			$thirdparty->client = $this->thirdpartyClientStatus($options);
+		}
+		if ($options->getOpt('supplier')) {
+			$thirdparty->fournisseur = 1;
+		}
+		if ($options->getOpt('no-supplier')) {
+			$thirdparty->fournisseur = 0;
+		}
+		if ($this->optionProvided($options, 'code-client')) {
+			$thirdparty->code_client = (string) $options->getOpt('code-client');
+		}
+		if ($this->optionProvided($options, 'code-supplier')) {
+			$thirdparty->code_fournisseur = (string) $options->getOpt('code-supplier');
+		}
+		if ($this->optionProvided($options, 'address')) {
+			$thirdparty->address = (string) $options->getOpt('address');
+		}
+		if ($this->optionProvided($options, 'zip')) {
+			$thirdparty->zip = (string) $options->getOpt('zip');
+		}
+		if ($this->optionProvided($options, 'town')) {
+			$thirdparty->town = (string) $options->getOpt('town');
+		}
+		if ($this->optionProvided($options, 'country')) {
+			$thirdparty->country_code = strtoupper((string) $options->getOpt('country'));
+			$thirdparty->country_id = $this->countryIdFromCode($thirdparty->country_code);
+		}
+		if ($this->optionProvided($options, 'phone')) {
+			$thirdparty->phone = (string) $options->getOpt('phone');
+		}
+		if ($this->optionProvided($options, 'mobile')) {
+			$thirdparty->phone_mobile = (string) $options->getOpt('mobile');
+		}
+		if ($this->optionProvided($options, 'email')) {
+			$thirdparty->email = (string) $options->getOpt('email');
+		}
+		if ($this->optionProvided($options, 'web')) {
+			$thirdparty->url = (string) $options->getOpt('web');
+		}
+		if ($this->optionProvided($options, 'siren')) {
+			$thirdparty->idprof1 = (string) $options->getOpt('siren');
+		}
+		if ($this->optionProvided($options, 'siret')) {
+			$thirdparty->idprof2 = (string) $options->getOpt('siret');
+		}
+		if ($this->optionProvided($options, 'ape')) {
+			$thirdparty->idprof3 = (string) $options->getOpt('ape');
+		}
+		if ($this->optionProvided($options, 'rcs')) {
+			$thirdparty->idprof4 = (string) $options->getOpt('rcs');
+		}
+		if ($this->optionProvided($options, 'eori')) {
+			$thirdparty->idprof5 = (string) $options->getOpt('eori');
+		}
+		if ($this->optionProvided($options, 'rna')) {
+			$thirdparty->idprof6 = (string) $options->getOpt('rna');
+		}
+		if ($this->optionProvided($options, 'vat')) {
+			$thirdparty->tva_intra = (string) $options->getOpt('vat');
+		}
+
+		$result = $thirdparty->update($thirdparty->id, $this->user, 1, 1, 1);
+		if ($result < 0) {
+			throw new RuntimeException('failed to update third party: '.$this->objectError($thirdparty));
+		}
+
+		$thirdparty->fetch($thirdparty->id);
+		return $this->output($this->thirdpartyData($thirdparty));
+	}
+
 	private function thirdpartyGet(Options $options): int
 	{
 		$thirdparty = new Societe($this->db);
@@ -698,6 +853,7 @@ final class Docli extends CLI
 		$contact->country_code = strtoupper((string) $options->getOpt('country', $thirdparty->country_code ?: 'FR'));
 		$contact->country_id = $this->countryIdFromCode($contact->country_code);
 		$contact->phone_pro = (string) $options->getOpt('phone', '');
+		$contact->phone_perso = (string) $options->getOpt('phone-perso', '');
 		$contact->phone_mobile = (string) $options->getOpt('mobile', '');
 		$contact->email = (string) $options->getOpt('email', '');
 		$contact->priv = $options->getOpt('private') ? 1 : 0;
@@ -710,6 +866,77 @@ final class Docli extends CLI
 		}
 
 		$contact->fetch($result);
+		return $this->output($this->contactData($contact));
+	}
+
+	private function contactUpdate(Options $options): int
+	{
+		$contact = new Contact($this->db);
+		$result = $contact->fetch($this->requiredInt($options, 'id'));
+		if ($result <= 0) {
+			throw new RuntimeException('contact not found');
+		}
+
+		if ($this->optionProvided($options, 'socid')) {
+			$socid = $this->requiredInt($options, 'socid');
+			$thirdparty = new Societe($this->db);
+			if ($thirdparty->fetch($socid) <= 0) {
+				throw new RuntimeException('third party not found: '.$socid);
+			}
+			$contact->socid = $socid;
+			$contact->fk_soc = $socid;
+		}
+		if ($this->optionProvided($options, 'lastname')) {
+			$contact->lastname = (string) $options->getOpt('lastname');
+			$contact->name = $contact->lastname;
+		}
+		if ($this->optionProvided($options, 'firstname')) {
+			$contact->firstname = (string) $options->getOpt('firstname');
+		}
+		if ($this->optionProvided($options, 'alias')) {
+			$contact->name_alias = (string) $options->getOpt('alias');
+		}
+		if ($this->optionProvided($options, 'job')) {
+			$contact->poste = (string) $options->getOpt('job');
+		}
+		if ($this->optionProvided($options, 'address')) {
+			$contact->address = (string) $options->getOpt('address');
+		}
+		if ($this->optionProvided($options, 'zip')) {
+			$contact->zip = (string) $options->getOpt('zip');
+		}
+		if ($this->optionProvided($options, 'town')) {
+			$contact->town = (string) $options->getOpt('town');
+		}
+		if ($this->optionProvided($options, 'country')) {
+			$contact->country_code = strtoupper((string) $options->getOpt('country'));
+			$contact->country_id = $this->countryIdFromCode($contact->country_code);
+		}
+		if ($this->optionProvided($options, 'phone')) {
+			$contact->phone_pro = (string) $options->getOpt('phone');
+		}
+		if ($this->optionProvided($options, 'phone-perso')) {
+			$contact->phone_perso = (string) $options->getOpt('phone-perso');
+		}
+		if ($this->optionProvided($options, 'mobile')) {
+			$contact->phone_mobile = (string) $options->getOpt('mobile');
+		}
+		if ($this->optionProvided($options, 'email')) {
+			$contact->email = (string) $options->getOpt('email');
+		}
+		if ($options->getOpt('private')) {
+			$contact->priv = 1;
+		}
+		if ($options->getOpt('public')) {
+			$contact->priv = 0;
+		}
+
+		$result = $contact->update($contact->id, $this->user, 0);
+		if ($result < 0) {
+			throw new RuntimeException('failed to update contact: '.$this->objectError($contact));
+		}
+
+		$contact->fetch($contact->id);
 		return $this->output($this->contactData($contact));
 	}
 
@@ -772,6 +999,11 @@ final class Docli extends CLI
 		}
 
 		return (int) $value;
+	}
+
+	private function optionProvided(Options $options, string $name): bool
+	{
+		return array_key_exists($name, $options->getOpt());
 	}
 
 	private function thirdpartyClientStatus(Options $options, string $forcedKind = ''): int
@@ -895,6 +1127,7 @@ final class Docli extends CLI
 			'town' => (string) $contact->town,
 			'country_code' => (string) $contact->country_code,
 			'phone' => (string) $contact->phone_pro,
+			'phone_perso' => (string) $contact->phone_perso,
 			'mobile' => (string) $contact->phone_mobile,
 			'email' => (string) $contact->email,
 			'private' => (bool) $contact->priv,

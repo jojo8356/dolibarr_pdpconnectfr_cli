@@ -40,14 +40,18 @@ docli routing:set --socid 2 --routing-id 322324963 --info SIREN
 docli routing:delete --socid 2
 docli sync:flows --from 2026-09-01 --limit 50
 docli thirdparty:create --name "Example SAS" --prospect --address "1 rue Exemple" --zip 75001 --town Paris --country FR --email contact@example.com
+docli thirdparty:update --socid 2 --phone +33494196025 --email contact@example.com
 docli prospect:create --name "Prospect Example" --country FR --email prospect@example.com
+docli prospect:update --socid 2 --address "2 rue Exemple" --zip 75002
 docli customer:create --name "Client Example" --country FR --email client@example.com
+docli customer:update --socid 2 --vat FR00000000000
 docli thirdparty:get --socid 2
 docli thirdparty:list --kind prospect --limit 50
 docli prospect:list
 docli customer:list
 docli other:list
 docli contact:create --socid 2 --firstname Alice --lastname Martin --job "Responsable achats" --email alice@example.com
+docli contact:update --id 12 --email alice@example.com --phone-perso "06 01 02 03 04"
 docli contact:list --socid 2
 docli contact:prospects
 docli contact:customers
@@ -66,6 +70,7 @@ docli prospect:list --json
 docli customer:list --json
 docli other:list --json
 docli contact:create --json --socid 2 --firstname Alice --lastname Martin
+docli contact:update --json --id 12 --mobile "06 01 02 03 04"
 docli contact:list --json --kind prospect
 ```
 
@@ -75,8 +80,12 @@ docli contact:list --json --kind prospect
 
 `thirdparty:create` defaults to prospect when neither `--customer`, `--prospect`, nor `--supplier` is provided. Use `--code-client auto` or omit it to let Dolibarr generate the customer/prospect code.
 
+`thirdparty:update`, `prospect:update`, and `customer:update` only change the fields passed on the command line. `prospect:update` keeps the third party as prospect, and `customer:update` keeps it as customer.
+
 `prospect:create` and `customer:create` are shortcuts that match the Dolibarr menu entries "Nouveau prospect" and "Nouveau client".
 
 `thirdparty:list --kind` accepts `prospect`, `customer`, `supplier`, `other`, and `all`. The shortcut commands `prospect:list`, `customer:list`, and `other:list` use those filters directly.
 
 `contact:create` creates a Dolibarr contact/address linked to a third party. If address fields are omitted, it reuses the third-party address. `contact:list --kind`, `contact:prospects`, `contact:customers`, and `contact:others` match the Dolibarr "Contacts/Adresses" list filters.
+
+`contact:update` only changes fields passed on the command line. Use `--phone` for professional phone, `--phone-perso` for personal phone, and `--mobile` for mobile phone.
