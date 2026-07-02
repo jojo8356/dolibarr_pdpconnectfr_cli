@@ -117,6 +117,55 @@ final class PDPConnectFRCli extends CLI
 		$this->registerCommonOptions($options, 'sync:flows');
 		$options->registerOption('from', 'Timestamp or parseable date.', null, 'DATE', 'sync:flows');
 		$options->registerOption('limit', 'Maximum number of flows.', null, 'N', 'sync:flows');
+
+		$options->registerCommand('thirdparty:create', 'Create a third party.');
+		$this->registerCommonOptions($options, 'thirdparty:create');
+		$options->registerOption('name', 'Third-party legal name.', null, 'NAME', 'thirdparty:create');
+		$options->registerOption('alias', 'Commercial name or brand.', null, 'ALIAS', 'thirdparty:create');
+		$options->registerOption('customer', 'Mark as customer.', null, false, 'thirdparty:create');
+		$options->registerOption('prospect', 'Mark as prospect. This is the default when no type is provided.', null, false, 'thirdparty:create');
+		$options->registerOption('supplier', 'Mark as supplier.', null, false, 'thirdparty:create');
+		$options->registerOption('code-client', 'Customer/prospect code. Use auto for Dolibarr numbering.', null, 'CODE', 'thirdparty:create');
+		$options->registerOption('code-supplier', 'Supplier code. Use auto for Dolibarr numbering.', null, 'CODE', 'thirdparty:create');
+		$options->registerOption('address', 'Postal address.', null, 'ADDRESS', 'thirdparty:create');
+		$options->registerOption('zip', 'Postal code.', null, 'ZIP', 'thirdparty:create');
+		$options->registerOption('town', 'City/town.', null, 'TOWN', 'thirdparty:create');
+		$options->registerOption('country', 'ISO country code, for example FR.', null, 'CODE', 'thirdparty:create');
+		$options->registerOption('phone', 'Phone number.', null, 'PHONE', 'thirdparty:create');
+		$options->registerOption('mobile', 'Mobile phone number.', null, 'PHONE', 'thirdparty:create');
+		$options->registerOption('email', 'Email address.', null, 'EMAIL', 'thirdparty:create');
+		$options->registerOption('web', 'Website URL.', null, 'URL', 'thirdparty:create');
+		$options->registerOption('siren', 'French SIREN, stored as idprof1.', null, 'SIREN', 'thirdparty:create');
+		$options->registerOption('siret', 'French SIRET, stored as idprof2.', null, 'SIRET', 'thirdparty:create');
+		$options->registerOption('ape', 'NAF/APE code, stored as idprof3.', null, 'APE', 'thirdparty:create');
+		$options->registerOption('vat', 'VAT number.', null, 'VAT', 'thirdparty:create');
+
+		$options->registerCommand('thirdparty:get', 'Fetch a third party by ID, SIREN, SIRET, or email.');
+		$this->registerCommonOptions($options, 'thirdparty:get');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'thirdparty:get');
+		$options->registerOption('siren', 'SIREN.', null, 'SIREN', 'thirdparty:get');
+		$options->registerOption('siret', 'SIRET.', null, 'SIRET', 'thirdparty:get');
+		$options->registerOption('email', 'Email address.', null, 'EMAIL', 'thirdparty:get');
+
+		$options->registerCommand('contact:create', 'Create a contact/address linked to a third party.');
+		$this->registerCommonOptions($options, 'contact:create');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'contact:create');
+		$options->registerOption('lastname', 'Last name.', null, 'NAME', 'contact:create');
+		$options->registerOption('firstname', 'First name.', null, 'NAME', 'contact:create');
+		$options->registerOption('alias', 'Alias.', null, 'ALIAS', 'contact:create');
+		$options->registerOption('job', 'Job title/function.', null, 'JOB', 'contact:create');
+		$options->registerOption('address', 'Postal address.', null, 'ADDRESS', 'contact:create');
+		$options->registerOption('zip', 'Postal code.', null, 'ZIP', 'contact:create');
+		$options->registerOption('town', 'City/town.', null, 'TOWN', 'contact:create');
+		$options->registerOption('country', 'ISO country code, for example FR.', null, 'CODE', 'contact:create');
+		$options->registerOption('phone', 'Professional phone number.', null, 'PHONE', 'contact:create');
+		$options->registerOption('mobile', 'Mobile phone number.', null, 'PHONE', 'contact:create');
+		$options->registerOption('email', 'Email address.', null, 'EMAIL', 'contact:create');
+		$options->registerOption('private', 'Create as private contact instead of shared third-party contact.', null, false, 'contact:create');
+
+		$options->registerCommand('contact:list', 'List contacts/addresses linked to a third party.');
+		$this->registerCommonOptions($options, 'contact:list');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'contact:list');
 	}
 
 	protected function main(Options $options)
@@ -172,6 +221,18 @@ final class PDPConnectFRCli extends CLI
 				case 'sync:flows':
 					$this->exitCode = $this->syncFlows($options);
 					return;
+				case 'thirdparty:create':
+					$this->exitCode = $this->thirdpartyCreate($options);
+					return;
+				case 'thirdparty:get':
+					$this->exitCode = $this->thirdpartyGet($options);
+					return;
+				case 'contact:create':
+					$this->exitCode = $this->contactCreate($options);
+					return;
+				case 'contact:list':
+					$this->exitCode = $this->contactList($options);
+					return;
 				default:
 					$this->error("unknown command: ".$command);
 					$this->error("run 'pdpconnectfr help' for usage");
@@ -223,6 +284,7 @@ final class PDPConnectFRCli extends CLI
 		require_once $master;
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
 		require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/contact/class/contact.class.php';
 		dol_include_once('/pdpconnectfr/class/pdpconnectfr.class.php');
 		dol_include_once('/pdpconnectfr/class/providers/PDPProviderManager.class.php');
 
@@ -433,6 +495,135 @@ final class PDPConnectFRCli extends CLI
 		return $this->output($result) === self::EXIT_OK ? self::EXIT_OK : self::EXIT_SOFTWARE;
 	}
 
+	private function thirdpartyCreate(Options $options): int
+	{
+		$name = trim((string) $options->getOpt('name', ''));
+		if ($name === '') {
+			throw new InvalidArgumentException('thirdparty:create requires --name NAME');
+		}
+
+		$thirdparty = new Societe($this->db);
+		$thirdparty->name = $name;
+		$thirdparty->nom = $name;
+		$thirdparty->name_alias = trim((string) $options->getOpt('alias', ''));
+		$thirdparty->client = $this->thirdpartyClientStatus($options);
+		$thirdparty->fournisseur = $options->getOpt('supplier') ? 1 : 0;
+		if ($thirdparty->client > 0) {
+			$thirdparty->code_client = (string) $options->getOpt('code-client', 'auto');
+		}
+		if ($thirdparty->fournisseur > 0) {
+			$thirdparty->code_fournisseur = (string) $options->getOpt('code-supplier', 'auto');
+		}
+		$thirdparty->address = (string) $options->getOpt('address', '');
+		$thirdparty->zip = (string) $options->getOpt('zip', '');
+		$thirdparty->town = (string) $options->getOpt('town', '');
+		$thirdparty->country_code = strtoupper((string) $options->getOpt('country', 'FR'));
+		$thirdparty->country_id = $this->countryIdFromCode($thirdparty->country_code);
+		$thirdparty->phone = (string) $options->getOpt('phone', '');
+		$thirdparty->phone_mobile = (string) $options->getOpt('mobile', '');
+		$thirdparty->email = (string) $options->getOpt('email', '');
+		$thirdparty->url = (string) $options->getOpt('web', '');
+		$thirdparty->idprof1 = (string) $options->getOpt('siren', '');
+		$thirdparty->idprof2 = (string) $options->getOpt('siret', '');
+		$thirdparty->idprof3 = (string) $options->getOpt('ape', '');
+		$thirdparty->tva_intra = (string) $options->getOpt('vat', '');
+		$thirdparty->status = 1;
+
+		$result = $thirdparty->create($this->user);
+		if ($result < 0) {
+			throw new RuntimeException('failed to create third party: '.$this->objectError($thirdparty));
+		}
+
+		$thirdparty->fetch($result);
+		return $this->output($this->thirdpartyData($thirdparty));
+	}
+
+	private function thirdpartyGet(Options $options): int
+	{
+		$thirdparty = new Societe($this->db);
+		if ($options->getOpt('socid')) {
+			$result = $thirdparty->fetch($this->requiredInt($options, 'socid'));
+		} elseif ($options->getOpt('siren')) {
+			$result = $thirdparty->fetch(0, '', '', '', (string) $options->getOpt('siren'));
+		} elseif ($options->getOpt('siret')) {
+			$result = $thirdparty->fetch(0, '', '', '', '', (string) $options->getOpt('siret'));
+		} elseif ($options->getOpt('email')) {
+			$result = $thirdparty->fetch(0, '', '', '', '', '', '', '', '', '', (string) $options->getOpt('email'));
+		} else {
+			throw new InvalidArgumentException('thirdparty:get requires --socid, --siren, --siret, or --email');
+		}
+
+		if ($result <= 0) {
+			throw new RuntimeException('third party not found');
+		}
+
+		return $this->output($this->thirdpartyData($thirdparty));
+	}
+
+	private function contactCreate(Options $options): int
+	{
+		$socid = $this->requiredInt($options, 'socid');
+		$lastname = trim((string) $options->getOpt('lastname', ''));
+		$firstname = trim((string) $options->getOpt('firstname', ''));
+		if ($lastname === '' && $firstname === '') {
+			throw new InvalidArgumentException('contact:create requires --lastname NAME or --firstname NAME');
+		}
+
+		$thirdparty = new Societe($this->db);
+		if ($thirdparty->fetch($socid) <= 0) {
+			throw new RuntimeException('third party not found: '.$socid);
+		}
+
+		$contact = new Contact($this->db);
+		$contact->socid = $socid;
+		$contact->fk_soc = $socid;
+		$contact->lastname = $lastname;
+		$contact->name = $lastname;
+		$contact->firstname = $firstname;
+		$contact->name_alias = (string) $options->getOpt('alias', '');
+		$contact->poste = (string) $options->getOpt('job', '');
+		$contact->address = (string) $options->getOpt('address', $thirdparty->address);
+		$contact->zip = (string) $options->getOpt('zip', $thirdparty->zip);
+		$contact->town = (string) $options->getOpt('town', $thirdparty->town);
+		$contact->country_code = strtoupper((string) $options->getOpt('country', $thirdparty->country_code ?: 'FR'));
+		$contact->country_id = $this->countryIdFromCode($contact->country_code);
+		$contact->phone_pro = (string) $options->getOpt('phone', '');
+		$contact->phone_mobile = (string) $options->getOpt('mobile', '');
+		$contact->email = (string) $options->getOpt('email', '');
+		$contact->priv = $options->getOpt('private') ? 1 : 0;
+		$contact->status = 1;
+		$contact->statut = 1;
+
+		$result = $contact->create($this->user);
+		if ($result < 0) {
+			throw new RuntimeException('failed to create contact: '.$this->objectError($contact));
+		}
+
+		$contact->fetch($result);
+		return $this->output($this->contactData($contact));
+	}
+
+	private function contactList(Options $options): int
+	{
+		$socid = $this->requiredInt($options, 'socid');
+		$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."socpeople WHERE fk_soc = ".((int) $socid)." ORDER BY lastname, firstname, rowid";
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new RuntimeException('failed to list contacts: '.$this->db->lasterror());
+		}
+
+		$contacts = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$contact = new Contact($this->db);
+			if ($contact->fetch((int) $obj->rowid) > 0) {
+				$contacts[] = $this->contactData($contact);
+			}
+		}
+		$this->db->free($resql);
+
+		return $this->output($contacts, array('id', 'socid', 'lastname', 'firstname', 'email', 'phone', 'mobile', 'town'));
+	}
+
 	private function getConfiguredProvider(): AbstractPDPProvider
 	{
 		$providerName = getDolGlobalString('PDPCONNECTFR_PDP');
@@ -457,6 +648,92 @@ final class PDPConnectFRCli extends CLI
 		}
 
 		return (int) $value;
+	}
+
+	private function thirdpartyClientStatus(Options $options): int
+	{
+		$isCustomer = (bool) $options->getOpt('customer');
+		$isProspect = (bool) $options->getOpt('prospect');
+		if (!$isCustomer && !$isProspect && !$options->getOpt('supplier')) {
+			$isProspect = true;
+		}
+		if ($isCustomer && $isProspect) {
+			return 3;
+		}
+		if ($isProspect) {
+			return 2;
+		}
+		if ($isCustomer) {
+			return 1;
+		}
+		return 0;
+	}
+
+	private function countryIdFromCode(string $countryCode): int
+	{
+		$countryCode = strtoupper(trim($countryCode));
+		if ($countryCode === '') {
+			return 0;
+		}
+		$countryId = getCountry($countryCode, 3);
+		return is_numeric($countryId) ? (int) $countryId : 0;
+	}
+
+	private function objectError($object): string
+	{
+		if (!empty($object->errors) && is_array($object->errors)) {
+			return implode('; ', $object->errors);
+		}
+		if (!empty($object->error)) {
+			return (string) $object->error;
+		}
+		return $this->db->lasterror() ?: 'unknown error';
+	}
+
+	/** @return array<string, mixed> */
+	private function thirdpartyData(Societe $thirdparty): array
+	{
+		return array(
+			'id' => (int) $thirdparty->id,
+			'name' => (string) $thirdparty->name,
+			'alias' => (string) $thirdparty->name_alias,
+			'client' => (int) $thirdparty->client,
+			'supplier' => (int) $thirdparty->fournisseur,
+			'code_client' => (string) $thirdparty->code_client,
+			'code_supplier' => (string) $thirdparty->code_fournisseur,
+			'address' => (string) $thirdparty->address,
+			'zip' => (string) $thirdparty->zip,
+			'town' => (string) $thirdparty->town,
+			'country_code' => (string) $thirdparty->country_code,
+			'phone' => (string) $thirdparty->phone,
+			'mobile' => (string) $thirdparty->phone_mobile,
+			'email' => (string) $thirdparty->email,
+			'web' => (string) $thirdparty->url,
+			'siren' => (string) $thirdparty->idprof1,
+			'siret' => (string) $thirdparty->idprof2,
+			'ape' => (string) $thirdparty->idprof3,
+			'vat' => (string) $thirdparty->tva_intra,
+		);
+	}
+
+	/** @return array<string, mixed> */
+	private function contactData(Contact $contact): array
+	{
+		return array(
+			'id' => (int) $contact->id,
+			'socid' => (int) $contact->socid,
+			'lastname' => (string) $contact->lastname,
+			'firstname' => (string) $contact->firstname,
+			'job' => (string) $contact->poste,
+			'address' => (string) $contact->address,
+			'zip' => (string) $contact->zip,
+			'town' => (string) $contact->town,
+			'country_code' => (string) $contact->country_code,
+			'phone' => (string) $contact->phone_pro,
+			'mobile' => (string) $contact->phone_mobile,
+			'email' => (string) $contact->email,
+			'private' => (bool) $contact->priv,
+		);
 	}
 
 	/**
