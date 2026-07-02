@@ -6,6 +6,7 @@
 		}
 	},
 	"require" : {
-		"horstoeko/zugferd" : "^1.0"
+		"horstoeko/zugferd" : "^1.0",
+		"splitbrain/php-cli" : "^1.3"
 	}
 }

@@ -18,6 +18,8 @@ The script is installed with the module:
 php /path/to/dolibarr/htdocs/custom/pdpconnectfr/scripts/pdpconnectfr-cli.php --help
 ```
 
+The CLI is built on `splitbrain/php-cli`, vendored in `vendor/splitbrain/php-cli`, so it does not require Composer on the target Dolibarr installation.
+
 For convenience, create a symlink in your `PATH`:
 
 ```sh

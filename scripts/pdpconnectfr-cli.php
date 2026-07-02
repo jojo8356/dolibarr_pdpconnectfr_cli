@@ -27,7 +27,17 @@ if (!defined('NOLOGIN')) {
 	define('NOLOGIN', '1');
 }
 
-final class PDPConnectFRCli
+require_once __DIR__.'/../vendor/splitbrain/php-cli/src/Exception.php';
+require_once __DIR__.'/../vendor/splitbrain/php-cli/src/Colors.php';
+require_once __DIR__.'/../vendor/splitbrain/php-cli/src/TableFormatter.php';
+require_once __DIR__.'/../vendor/splitbrain/php-cli/src/Options.php';
+require_once __DIR__.'/../vendor/splitbrain/php-cli/src/Base.php';
+require_once __DIR__.'/../vendor/splitbrain/php-cli/src/CLI.php';
+
+use splitbrain\phpcli\CLI;
+use splitbrain\phpcli\Options;
+
+final class PDPConnectFRCli extends CLI
 {
 	private const VERSION = '1.0.0';
 
@@ -35,9 +45,6 @@ final class PDPConnectFRCli
 	private const EXIT_USAGE = 2;
 	private const EXIT_SOFTWARE = 70;
 	private const EXIT_CONFIG = 78;
-
-	/** @var array<int, string> */
-	private array $argv;
 
 	/** @var array<string, mixed> */
 	private array $globalOptions = array(
@@ -52,106 +59,156 @@ final class PDPConnectFRCli
 	/** @var User */
 	private $user;
 
-	/**
-	 * @param array<int, string> $argv
-	 */
-	public function __construct(array $argv)
+	private int $exitCode = self::EXIT_OK;
+
+	protected function setup(Options $options)
 	{
-		$this->argv = $argv;
+		$options->setHelp('Manage PDPConnectFR from the command line.');
+		$options->setCommandHelp('Available commands:');
+		$this->registerCommonOptions($options);
+
+		$options->registerCommand('help', 'Show help for all commands.');
+		$options->registerArgument('command', 'Command name.', false, 'help');
+
+		$options->registerCommand('version', 'Show version.');
+
+		$options->registerCommand('provider:list', 'List configured PA providers.');
+		$this->registerCommonOptions($options, 'provider:list');
+
+		$options->registerCommand('provider:get', 'Show current PA provider, mode, and protocol.');
+		$this->registerCommonOptions($options, 'provider:get');
+
+		$options->registerCommand('provider:set', 'Set PA provider.');
+		$this->registerCommonOptions($options, 'provider:set');
+		$options->registerOption('provider', 'Provider name, for example SUPERPDP.', null, 'NAME', 'provider:set');
+		$options->registerOption('protocol', 'Invoice protocol, for example CII.', null, 'PROTOCOL', 'provider:set');
+		$options->registerOption('live', 'Enable live mode.', null, false, 'provider:set');
+		$options->registerOption('test', 'Enable test/sandbox mode.', null, false, 'provider:set');
+
+		$options->registerCommand('provider:health', 'Call the configured provider health check endpoint.');
+		$this->registerCommonOptions($options, 'provider:health');
+
+		$options->registerCommand('token:get', 'Fetch and save an OAuth token for the configured provider.');
+		$this->registerCommonOptions($options, 'token:get');
+		$options->registerOption('print-token', 'Print the raw access token on stdout.', null, false, 'token:get');
+
+		$options->registerCommand('company:validate', 'Validate Dolibarr company data required for e-invoicing.');
+		$this->registerCommonOptions($options, 'company:validate');
+
+		$options->registerCommand('routing:list', 'List routings for a third party.');
+		$this->registerCommonOptions($options, 'routing:list');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'routing:list');
+		$options->registerOption('type', 'Routing owner type.', null, 'TYPE', 'routing:list');
+
+		$options->registerCommand('routing:set', 'Set default routing for a third party.');
+		$this->registerCommonOptions($options, 'routing:set');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'routing:set');
+		$options->registerOption('routing-id', 'Routing identifier, usually SIREN/SIRET.', null, 'VALUE', 'routing:set');
+		$options->registerOption('type', 'Routing owner type.', null, 'TYPE', 'routing:set');
+		$options->registerOption('source', 'Routing source.', null, 'SOURCE', 'routing:set');
+		$options->registerOption('info', 'Routing info label.', null, 'INFO', 'routing:set');
+
+		$options->registerCommand('routing:delete', 'Delete default routing for a third party.');
+		$this->registerCommonOptions($options, 'routing:delete');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'routing:delete');
+		$options->registerOption('type', 'Routing owner type.', null, 'TYPE', 'routing:delete');
+
+		$options->registerCommand('sync:flows', 'Synchronize incoming flows.');
+		$this->registerCommonOptions($options, 'sync:flows');
+		$options->registerOption('from', 'Timestamp or parseable date.', null, 'DATE', 'sync:flows');
+		$options->registerOption('limit', 'Maximum number of flows.', null, 'N', 'sync:flows');
 	}
 
-	public function run(): int
+	protected function main(Options $options)
 	{
+		$this->globalOptions['format'] = $options->getOpt('json') ? 'json' : 'text';
+		$this->globalOptions['quiet'] = (bool) $options->getOpt('quiet');
+		$this->globalOptions['verbose'] = (bool) $options->getOpt('verbose');
+
 		try {
-			$args = $this->parseGlobalOptions(array_slice($this->argv, 1));
-			$command = array_shift($args);
-
-			if ($command === null || $command === '') {
-				$this->printShortHelp();
-				return self::EXIT_USAGE;
-			}
-
-			if ($command === '-h' || $command === '--help' || $command === 'help') {
-				$this->printHelp($args[0] ?? null);
-				return self::EXIT_OK;
-			}
-
-			if ($command === '--version' || $command === 'version') {
+			$command = $options->getCmd();
+			if ($options->getOpt('version') || $command === 'version') {
 				$this->writeLine('pdpconnectfr-cli '.self::VERSION);
-				return self::EXIT_OK;
+				$this->exitCode = self::EXIT_OK;
+				return;
+			}
+
+			if ($command === '' || $command === 'help') {
+				$this->writeLine($options->help());
+				$this->exitCode = $command === 'help' ? self::EXIT_OK : self::EXIT_USAGE;
+				return;
 			}
 
 			$this->bootstrapDolibarr();
 
 			switch ($command) {
 				case 'provider:list':
-					return $this->providerList();
+					$this->exitCode = $this->providerList();
+					return;
 				case 'provider:get':
-					return $this->providerGet();
+					$this->exitCode = $this->providerGet();
+					return;
 				case 'provider:set':
-					return $this->providerSet($args);
+					$this->exitCode = $this->providerSet($options);
+					return;
 				case 'provider:health':
-					return $this->providerHealth();
+					$this->exitCode = $this->providerHealth();
+					return;
 				case 'token:get':
-					return $this->tokenGet($args);
+					$this->exitCode = $this->tokenGet($options);
+					return;
 				case 'company:validate':
-					return $this->companyValidate();
+					$this->exitCode = $this->companyValidate();
+					return;
 				case 'routing:list':
-					return $this->routingList($args);
+					$this->exitCode = $this->routingList($options);
+					return;
 				case 'routing:set':
-					return $this->routingSet($args);
+					$this->exitCode = $this->routingSet($options);
+					return;
 				case 'routing:delete':
-					return $this->routingDelete($args);
+					$this->exitCode = $this->routingDelete($options);
+					return;
 				case 'sync:flows':
-					return $this->syncFlows($args);
+					$this->exitCode = $this->syncFlows($options);
+					return;
 				default:
 					$this->error("unknown command: ".$command);
 					$this->error("run 'pdpconnectfr help' for usage");
-					return self::EXIT_USAGE;
+					$this->exitCode = self::EXIT_USAGE;
+					return;
 			}
 		} catch (InvalidArgumentException $e) {
 			$this->error($e->getMessage());
-			return self::EXIT_USAGE;
+			$this->exitCode = self::EXIT_USAGE;
 		} catch (RuntimeException $e) {
 			$this->error($e->getMessage());
-			return self::EXIT_CONFIG;
+			$this->exitCode = self::EXIT_CONFIG;
 		} catch (Throwable $e) {
 			$this->error($e->getMessage());
 			if (!empty($this->globalOptions['verbose'])) {
 				$this->error($e->getTraceAsString());
 			}
-			return self::EXIT_SOFTWARE;
+			$this->exitCode = self::EXIT_SOFTWARE;
 		}
 	}
 
-	/**
-	 * @param array<int, string> $args
-	 * @return array<int, string>
-	 */
-	private function parseGlobalOptions(array $args): array
+	public function getExitCode(): int
 	{
-		$remaining = array();
-		foreach ($args as $arg) {
-			if ($arg === '--json') {
-				$this->globalOptions['format'] = 'json';
-				continue;
-			}
-			if ($arg === '--text') {
-				$this->globalOptions['format'] = 'text';
-				continue;
-			}
-			if ($arg === '-q' || $arg === '--quiet') {
-				$this->globalOptions['quiet'] = true;
-				continue;
-			}
-			if ($arg === '-v' || $arg === '--verbose') {
-				$this->globalOptions['verbose'] = true;
-				continue;
-			}
-			$remaining[] = $arg;
-		}
+		return $this->exitCode;
+	}
 
-		return $remaining;
+	private function registerCommonOptions(Options $options, string $command = ''): void
+	{
+		$options->registerOption('json', 'Emit machine-readable JSON on stdout.', null, false, $command);
+		$options->registerOption('text', 'Emit human-readable text, the default.', null, false, $command);
+		$options->registerOption('quiet', 'Suppress normal stdout output.', 'q', false, $command);
+		$options->registerOption('verbose', 'Print stack traces on unexpected errors.', 'v', false, $command);
+		if ($command === '') {
+			$options->registerOption('version', 'Show version.', null, false, $command);
+			return;
+		}
+		$options->registerOption('help', 'Display this help screen and exit immediately.', 'h', false, $command);
 	}
 
 	private function bootstrapDolibarr(): void
@@ -237,15 +294,11 @@ final class PDPConnectFRCli
 		return $this->output($data);
 	}
 
-	/**
-	 * @param array<int, string> $args
-	 */
-	private function providerSet(array $args): int
+	private function providerSet(Options $options): int
 	{
 		global $conf;
 
-		$options = $this->parseOptions($args, array('provider:', 'protocol:', 'live', 'test'));
-		$provider = strtoupper((string) ($options['provider'] ?? ''));
+		$provider = strtoupper((string) $options->getOpt('provider', ''));
 		if ($provider === '') {
 			throw new InvalidArgumentException('provider:set requires --provider NAME');
 		}
@@ -257,17 +310,17 @@ final class PDPConnectFRCli
 		}
 
 		dolibarr_set_const($this->db, 'PDPCONNECTFR_PDP', $provider, 'chaine', 0, '', $conf->entity);
-		if (!empty($options['live']) && !empty($options['test'])) {
+		if ($options->getOpt('live') && $options->getOpt('test')) {
 			throw new InvalidArgumentException('use either --live or --test, not both');
 		}
-		if (!empty($options['live'])) {
+		if ($options->getOpt('live')) {
 			dolibarr_set_const($this->db, 'PDPCONNECTFR_LIVE', '1', 'chaine', 0, '', $conf->entity);
 		}
-		if (!empty($options['test'])) {
+		if ($options->getOpt('test')) {
 			dolibarr_set_const($this->db, 'PDPCONNECTFR_LIVE', '0', 'chaine', 0, '', $conf->entity);
 		}
-		if (!empty($options['protocol'])) {
-			dolibarr_set_const($this->db, 'PDPCONNECTFR_PROTOCOL', strtoupper((string) $options['protocol']), 'chaine', 0, '', $conf->entity);
+		if ($options->getOpt('protocol')) {
+			dolibarr_set_const($this->db, 'PDPCONNECTFR_PROTOCOL', strtoupper((string) $options->getOpt('protocol')), 'chaine', 0, '', $conf->entity);
 		}
 
 		return $this->output(array(
@@ -285,12 +338,8 @@ final class PDPConnectFRCli
 		return $this->output($result) === self::EXIT_OK && !empty($result['status']) ? self::EXIT_OK : self::EXIT_CONFIG;
 	}
 
-	/**
-	 * @param array<int, string> $args
-	 */
-	private function tokenGet(array $args): int
+	private function tokenGet(Options $options): int
 	{
-		$options = $this->parseOptions($args, array('print-token'));
 		$provider = $this->getConfiguredProvider();
 		$token = $provider->getAccessToken();
 
@@ -299,7 +348,7 @@ final class PDPConnectFRCli
 		}
 
 		$data = array('saved' => true);
-		if (!empty($options['print-token'])) {
+		if ($options->getOpt('print-token')) {
 			$data['access_token'] = $token;
 		}
 
@@ -314,14 +363,10 @@ final class PDPConnectFRCli
 		return $this->output($result) === self::EXIT_OK && ((int) $result['res']) > 0 ? self::EXIT_OK : self::EXIT_CONFIG;
 	}
 
-	/**
-	 * @param array<int, string> $args
-	 */
-	private function routingList(array $args): int
+	private function routingList(Options $options): int
 	{
-		$options = $this->parseOptions($args, array('socid:', 'type:'));
 		$socid = $this->requiredInt($options, 'socid');
-		$type = (string) ($options['type'] ?? 'thirdparty');
+		$type = (string) $options->getOpt('type', 'thirdparty');
 
 		$pdp = new PdpConnectFr($this->db);
 		$routings = $pdp->fetchAllRoutings($socid, $type, 0);
@@ -332,14 +377,10 @@ final class PDPConnectFRCli
 		return $this->output($routings, array('rowid', 'routing_id', 'source', 'info', 'is_default'));
 	}
 
-	/**
-	 * @param array<int, string> $args
-	 */
-	private function routingSet(array $args): int
+	private function routingSet(Options $options): int
 	{
-		$options = $this->parseOptions($args, array('socid:', 'routing-id:', 'type:', 'source:', 'info:'));
 		$socid = $this->requiredInt($options, 'socid');
-		$routingId = (string) ($options['routing-id'] ?? '');
+		$routingId = (string) $options->getOpt('routing-id', '');
 		if ($routingId === '') {
 			throw new InvalidArgumentException('routing:set requires --routing-id VALUE');
 		}
@@ -348,10 +389,10 @@ final class PDPConnectFRCli
 		$result = $pdp->setDefaultRouting(
 			$socid,
 			$routingId,
-			(string) ($options['source'] ?? 'manual'),
-			(string) ($options['info'] ?? ''),
+			(string) $options->getOpt('source', 'manual'),
+			(string) $options->getOpt('info', ''),
 			'',
-			(string) ($options['type'] ?? 'thirdparty')
+			(string) $options->getOpt('type', 'thirdparty')
 		);
 		if ($result < 0) {
 			throw new RuntimeException('failed to set routing: '.$pdp->error);
@@ -360,14 +401,10 @@ final class PDPConnectFRCli
 		return $this->output(array('rowid' => $result, 'socid' => $socid, 'routing_id' => $routingId));
 	}
 
-	/**
-	 * @param array<int, string> $args
-	 */
-	private function routingDelete(array $args): int
+	private function routingDelete(Options $options): int
 	{
-		$options = $this->parseOptions($args, array('socid:', 'type:'));
 		$socid = $this->requiredInt($options, 'socid');
-		$type = (string) ($options['type'] ?? 'thirdparty');
+		$type = (string) $options->getOpt('type', 'thirdparty');
 
 		$pdp = new PdpConnectFr($this->db);
 		$result = $pdp->setDefaultRouting($socid, '', '', '', '', $type);
@@ -378,20 +415,17 @@ final class PDPConnectFRCli
 		return $this->output(array('deleted' => true, 'socid' => $socid, 'type' => $type));
 	}
 
-	/**
-	 * @param array<int, string> $args
-	 */
-	private function syncFlows(array $args): int
+	private function syncFlows(Options $options): int
 	{
-		$options = $this->parseOptions($args, array('from:', 'limit:'));
 		$from = 0;
-		if (!empty($options['from'])) {
-			$from = ctype_digit((string) $options['from']) ? (int) $options['from'] : strtotime((string) $options['from']);
+		if ($options->getOpt('from')) {
+			$fromOption = (string) $options->getOpt('from');
+			$from = ctype_digit($fromOption) ? (int) $fromOption : strtotime($fromOption);
 			if ($from === false) {
 				throw new InvalidArgumentException('invalid --from value, use timestamp or parseable date');
 			}
 		}
-		$limit = isset($options['limit']) ? (int) $options['limit'] : 0;
+		$limit = $options->getOpt('limit') ? (int) $options->getOpt('limit') : 0;
 
 		$provider = $this->getConfiguredProvider();
 		$result = $provider->syncFlows($from, $limit);
@@ -415,74 +449,14 @@ final class PDPConnectFRCli
 		return $provider;
 	}
 
-	/**
-	 * @param array<int, string> $args
-	 * @param array<int, string> $spec
-	 * @return array<string, mixed>
-	 */
-	private function parseOptions(array $args, array $spec): array
+	private function requiredInt(Options $options, string $name): int
 	{
-		$options = array();
-		$expectsValue = array();
-		foreach ($spec as $entry) {
-			if (substr($entry, -1) === ':') {
-				$expectsValue[substr($entry, 0, -1)] = true;
-			} else {
-				$expectsValue[$entry] = false;
-			}
-		}
-
-		for ($i = 0; $i < count($args); $i++) {
-			$arg = $args[$i];
-			if ($arg === '-h' || $arg === '--help') {
-				$this->printHelp($this->argv[1] ?? null);
-				exit(self::EXIT_OK);
-			}
-			if ($arg === '--') {
-				break;
-			}
-			if (strpos($arg, '--') !== 0) {
-				throw new InvalidArgumentException('unexpected argument: '.$arg);
-			}
-
-			$nameValue = substr($arg, 2);
-			$value = true;
-			if (strpos($nameValue, '=') !== false) {
-				[$nameValue, $value] = explode('=', $nameValue, 2);
-			}
-			if (!array_key_exists($nameValue, $expectsValue)) {
-				throw new InvalidArgumentException('unknown option: --'.$nameValue);
-			}
-			if ($expectsValue[$nameValue]) {
-				if ($value === true) {
-					$i++;
-					if (!isset($args[$i])) {
-						throw new InvalidArgumentException('missing value for --'.$nameValue);
-					}
-					$value = $args[$i];
-				}
-				$options[$nameValue] = $value;
-			} else {
-				if ($value !== true) {
-					throw new InvalidArgumentException('--'.$nameValue.' does not accept a value');
-				}
-				$options[$nameValue] = true;
-			}
-		}
-
-		return $options;
-	}
-
-	/**
-	 * @param array<string, mixed> $options
-	 */
-	private function requiredInt(array $options, string $name): int
-	{
-		if (!isset($options[$name]) || !ctype_digit((string) $options[$name])) {
+		$value = $options->getOpt($name, '');
+		if ($value === '' || !ctype_digit((string) $value)) {
 			throw new InvalidArgumentException('--'.$name.' must be a positive integer');
 		}
 
-		return (int) $options[$name];
+		return (int) $value;
 	}
 
 	/**
@@ -574,57 +548,6 @@ final class PDPConnectFRCli
 		return trim(preg_replace('/\s+/', ' ', $value) ?? $value);
 	}
 
-	private function printShortHelp(): void
-	{
-		$this->writeLine('pdpconnectfr - manage PDPConnectFR from the command line');
-		$this->writeLine('Usage: pdpconnectfr COMMAND [OPTIONS]');
-		$this->writeLine('Examples:');
-		$this->writeLine('  pdpconnectfr provider:list');
-		$this->writeLine('  pdpconnectfr company:validate --json');
-		$this->writeLine('  pdpconnectfr routing:set --socid 2 --routing-id 322324963');
-		$this->writeLine("Run 'pdpconnectfr --help' for full help.");
-	}
-
-	private function printHelp(?string $command = null): void
-	{
-		$help = array(
-			'provider:list' => 'List configured PA providers.',
-			'provider:get' => 'Show current PA provider, mode, and protocol.',
-			'provider:set' => 'Set PA provider: provider:set --provider SUPERPDP [--live|--test] [--protocol CII].',
-			'provider:health' => 'Call the configured provider health check endpoint.',
-			'token:get' => 'Fetch and save an OAuth token for the configured provider. Use --print-token to print it.',
-			'company:validate' => 'Validate Dolibarr company data required for e-invoicing.',
-			'routing:list' => 'List routings: routing:list --socid ID [--type thirdparty].',
-			'routing:set' => 'Set default routing: routing:set --socid ID --routing-id VALUE [--type thirdparty].',
-			'routing:delete' => 'Delete default routing: routing:delete --socid ID [--type thirdparty].',
-			'sync:flows' => 'Synchronize incoming flows: sync:flows [--from DATE] [--limit N].',
-		);
-
-		if ($command !== null && isset($help[$command])) {
-			$this->writeLine($command);
-			$this->writeLine('  '.$help[$command]);
-			return;
-		}
-
-		$this->writeLine('pdpconnectfr-cli '.self::VERSION);
-		$this->writeLine('');
-		$this->writeLine('Usage:');
-		$this->writeLine('  pdpconnectfr COMMAND [OPTIONS]');
-		$this->writeLine('');
-		$this->writeLine('Global options:');
-		$this->writeLine('  -h, --help       Show help.');
-		$this->writeLine('  --version        Show version.');
-		$this->writeLine('  --json           Emit machine-readable JSON on stdout.');
-		$this->writeLine('  --text           Emit human-readable text, the default.');
-		$this->writeLine('  -q, --quiet      Reserved for quiet mode.');
-		$this->writeLine('  -v, --verbose    Print stack traces on unexpected errors.');
-		$this->writeLine('');
-		$this->writeLine('Commands:');
-		foreach ($help as $name => $description) {
-			$this->writeLine('  '.str_pad($name, 18).' '.$description);
-		}
-	}
-
 	private function writeLine(string $line): void
 	{
 		if (!empty($this->globalOptions['quiet'])) {
@@ -633,11 +556,12 @@ final class PDPConnectFRCli
 		fwrite(STDOUT, $line.PHP_EOL);
 	}
 
-	private function error(string $line): void
+	public function error($message, array $context = array())
 	{
-		fwrite(STDERR, 'pdpconnectfr: '.$line.PHP_EOL);
+		fwrite(STDERR, 'pdpconnectfr: '.$message.PHP_EOL);
 	}
 }
 
-$app = new PDPConnectFRCli($argv);
-exit($app->run());
+$app = new PDPConnectFRCli();
+$app->run();
+exit($app->getExitCode());
