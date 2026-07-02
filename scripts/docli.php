@@ -124,6 +124,11 @@ final class Docli extends CLI
 		$options->registerCommand('thirdparty:update', 'Update a third party.');
 		$this->registerThirdpartyUpdateOptions($options, 'thirdparty:update', true);
 
+		$options->registerCommand('thirdparty:delete', 'Delete a third party.');
+		$this->registerCommonOptions($options, 'thirdparty:delete');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'thirdparty:delete');
+		$options->registerOption('yes', 'Confirm deletion.', null, false, 'thirdparty:delete');
+
 		$options->registerCommand('prospect:create', 'Create a prospect.');
 		$this->registerThirdpartyCreateOptions($options, 'prospect:create', false);
 
@@ -165,6 +170,11 @@ final class Docli extends CLI
 
 		$options->registerCommand('contact:update', 'Update a contact/address.');
 		$this->registerContactOptions($options, 'contact:update', false);
+
+		$options->registerCommand('contact:delete', 'Delete a contact/address.');
+		$this->registerCommonOptions($options, 'contact:delete');
+		$options->registerOption('id', 'Dolibarr contact/address ID.', null, 'ID', 'contact:delete');
+		$options->registerOption('yes', 'Confirm deletion.', null, false, 'contact:delete');
 
 		$options->registerCommand('contact:list', 'List contacts/addresses linked to a third party.');
 		$this->registerCommonOptions($options, 'contact:list');
@@ -244,6 +254,9 @@ final class Docli extends CLI
 				case 'thirdparty:update':
 					$this->exitCode = $this->thirdpartyUpdate($options);
 					return;
+				case 'thirdparty:delete':
+					$this->exitCode = $this->thirdpartyDelete($options);
+					return;
 				case 'prospect:create':
 					$this->exitCode = $this->thirdpartyCreate($options, 'prospect');
 					return;
@@ -276,6 +289,9 @@ final class Docli extends CLI
 					return;
 				case 'contact:update':
 					$this->exitCode = $this->contactUpdate($options);
+					return;
+				case 'contact:delete':
+					$this->exitCode = $this->contactDelete($options);
 					return;
 				case 'contact:list':
 					$this->exitCode = $this->contactList($options, (string) $options->getOpt('kind', 'all'));
@@ -770,6 +786,31 @@ final class Docli extends CLI
 		return $this->output($this->thirdpartyData($thirdparty));
 	}
 
+	private function thirdpartyDelete(Options $options): int
+	{
+		if (!$options->getOpt('yes')) {
+			throw new InvalidArgumentException('thirdparty:delete requires --yes');
+		}
+
+		$thirdparty = new Societe($this->db);
+		$socid = $this->requiredInt($options, 'socid');
+		$result = $thirdparty->fetch($socid);
+		if ($result <= 0) {
+			throw new RuntimeException('third party not found');
+		}
+
+		$data = $this->thirdpartyData($thirdparty);
+		$result = $thirdparty->delete($thirdparty->id, $this->user, 1);
+		if ($result < 0) {
+			throw new RuntimeException('failed to delete third party: '.$this->objectError($thirdparty));
+		}
+		if ($result === 0) {
+			throw new RuntimeException('third party was not deleted because it is used by other Dolibarr objects');
+		}
+
+		return $this->output(array('deleted' => true, 'thirdparty' => $data));
+	}
+
 	private function thirdpartyGet(Options $options): int
 	{
 		$thirdparty = new Societe($this->db);
@@ -938,6 +979,27 @@ final class Docli extends CLI
 
 		$contact->fetch($contact->id);
 		return $this->output($this->contactData($contact));
+	}
+
+	private function contactDelete(Options $options): int
+	{
+		if (!$options->getOpt('yes')) {
+			throw new InvalidArgumentException('contact:delete requires --yes');
+		}
+
+		$contact = new Contact($this->db);
+		$result = $contact->fetch($this->requiredInt($options, 'id'));
+		if ($result <= 0) {
+			throw new RuntimeException('contact not found');
+		}
+
+		$data = $this->contactData($contact);
+		$result = $contact->delete($this->user, 0);
+		if ($result < 0) {
+			throw new RuntimeException('failed to delete contact: '.$this->objectError($contact));
+		}
+
+		return $this->output(array('deleted' => true, 'contact' => $data));
 	}
 
 	private function contactList(Options $options, string $kind = 'all'): int
