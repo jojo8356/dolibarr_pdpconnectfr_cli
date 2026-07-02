@@ -129,6 +129,27 @@ final class Docli extends CLI
 		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'thirdparty:delete');
 		$options->registerOption('yes', 'Confirm deletion.', null, false, 'thirdparty:delete');
 
+		$options->registerCommand('thirdparty:logo:get', 'Show third-party logo information.');
+		$this->registerCommonOptions($options, 'thirdparty:logo:get');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'thirdparty:logo:get');
+
+		$options->registerCommand('thirdparty:logo:set', 'Set third-party logo from a local file.');
+		$this->registerCommonOptions($options, 'thirdparty:logo:set');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'thirdparty:logo:set');
+		$options->registerOption('file', 'Local image path.', null, 'PATH', 'thirdparty:logo:set');
+		$options->registerOption('squared', 'Also set as squared logo.', null, false, 'thirdparty:logo:set');
+
+		$options->registerCommand('thirdparty:logo:fetch', 'Set third-party logo from a URL.');
+		$this->registerCommonOptions($options, 'thirdparty:logo:fetch');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'thirdparty:logo:fetch');
+		$options->registerOption('url', 'Image URL.', null, 'URL', 'thirdparty:logo:fetch');
+		$options->registerOption('squared', 'Also set as squared logo.', null, false, 'thirdparty:logo:fetch');
+
+		$options->registerCommand('thirdparty:logo:delete', 'Delete third-party logo.');
+		$this->registerCommonOptions($options, 'thirdparty:logo:delete');
+		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'thirdparty:logo:delete');
+		$options->registerOption('yes', 'Confirm deletion.', null, false, 'thirdparty:logo:delete');
+
 		$options->registerCommand('prospect:create', 'Create a prospect.');
 		$this->registerThirdpartyCreateOptions($options, 'prospect:create', false);
 
@@ -256,6 +277,18 @@ final class Docli extends CLI
 					return;
 				case 'thirdparty:delete':
 					$this->exitCode = $this->thirdpartyDelete($options);
+					return;
+				case 'thirdparty:logo:get':
+					$this->exitCode = $this->thirdpartyLogoGet($options);
+					return;
+				case 'thirdparty:logo:set':
+					$this->exitCode = $this->thirdpartyLogoSet($options);
+					return;
+				case 'thirdparty:logo:fetch':
+					$this->exitCode = $this->thirdpartyLogoFetch($options);
+					return;
+				case 'thirdparty:logo:delete':
+					$this->exitCode = $this->thirdpartyLogoDelete($options);
 					return;
 				case 'prospect:create':
 					$this->exitCode = $this->thirdpartyCreate($options, 'prospect');
@@ -440,6 +473,8 @@ final class Docli extends CLI
 
 		require_once $master;
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
+		require_once DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php';
+		require_once DOL_DOCUMENT_ROOT.'/core/lib/images.lib.php';
 		require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 		require_once DOL_DOCUMENT_ROOT.'/contact/class/contact.class.php';
 		dol_include_once('/pdpconnectfr/class/pdpconnectfr.class.php');
@@ -811,6 +846,90 @@ final class Docli extends CLI
 		return $this->output(array('deleted' => true, 'thirdparty' => $data));
 	}
 
+	private function thirdpartyLogoGet(Options $options): int
+	{
+		$thirdparty = $this->fetchThirdpartyById($this->requiredInt($options, 'socid'));
+		return $this->output($this->thirdpartyLogoData($thirdparty));
+	}
+
+	private function thirdpartyLogoSet(Options $options): int
+	{
+		$thirdparty = $this->fetchThirdpartyById($this->requiredInt($options, 'socid'));
+		$file = (string) $options->getOpt('file', '');
+		if ($file === '') {
+			throw new InvalidArgumentException('thirdparty:logo:set requires --file PATH');
+		}
+		if (!is_readable($file)) {
+			throw new RuntimeException('logo file is not readable: '.$file);
+		}
+
+		return $this->setThirdpartyLogoFromFile($thirdparty, $file, (bool) $options->getOpt('squared'));
+	}
+
+	private function thirdpartyLogoFetch(Options $options): int
+	{
+		$thirdparty = $this->fetchThirdpartyById($this->requiredInt($options, 'socid'));
+		$url = (string) $options->getOpt('url', '');
+		if ($url === '') {
+			throw new InvalidArgumentException('thirdparty:logo:fetch requires --url URL');
+		}
+		if (!preg_match('/^https?:\/\//i', $url)) {
+			throw new InvalidArgumentException('--url must start with http:// or https://');
+		}
+
+		$tmpFile = tempnam(sys_get_temp_dir(), 'docli-logo-');
+		if ($tmpFile === false) {
+			throw new RuntimeException('failed to create temporary file');
+		}
+		$content = @file_get_contents($url);
+		if ($content === false || $content === '') {
+			@unlink($tmpFile);
+			throw new RuntimeException('failed to download logo: '.$url);
+		}
+		file_put_contents($tmpFile, $content);
+		$path = parse_url($url, PHP_URL_PATH);
+		$extension = is_string($path) ? pathinfo($path, PATHINFO_EXTENSION) : '';
+		if ($extension !== '') {
+			$withExtension = $tmpFile.'.'.$extension;
+			rename($tmpFile, $withExtension);
+			$tmpFile = $withExtension;
+		}
+
+		try {
+			return $this->setThirdpartyLogoFromFile($thirdparty, $tmpFile, (bool) $options->getOpt('squared'), $url);
+		} finally {
+			@unlink($tmpFile);
+		}
+	}
+
+	private function thirdpartyLogoDelete(Options $options): int
+	{
+		if (!$options->getOpt('yes')) {
+			throw new InvalidArgumentException('thirdparty:logo:delete requires --yes');
+		}
+
+		$thirdparty = $this->fetchThirdpartyById($this->requiredInt($options, 'socid'));
+		$data = $this->thirdpartyLogoData($thirdparty);
+		$dir = $this->thirdpartyLogoDir($thirdparty);
+
+		if (!empty($thirdparty->logo)) {
+			dol_delete_file($dir.'/'.$thirdparty->logo);
+		}
+		if (!empty($thirdparty->logo_squarred) && $thirdparty->logo_squarred !== $thirdparty->logo) {
+			dol_delete_file($dir.'/'.$thirdparty->logo_squarred);
+		}
+		dol_delete_dir_recursive($dir.'/thumbs');
+
+		$thirdparty->logo = '';
+		$thirdparty->logo_squarred = '';
+		$result = $thirdparty->update($thirdparty->id, $this->user, 1, 1, 1);
+		if ($result < 0) {
+			throw new RuntimeException('failed to clear third-party logo: '.$this->objectError($thirdparty));
+		}
+
+		return $this->output(array('deleted' => true, 'previous_logo' => $data));
+	}
+
 	private function thirdpartyGet(Options $options): int
 	{
 		$thirdparty = new Societe($this->db);
@@ -831,6 +950,88 @@ final class Docli extends CLI
 		}
 
 		return $this->output($this->thirdpartyData($thirdparty));
+	}
+
+	private function fetchThirdpartyById(int $socid): Societe
+	{
+		$thirdparty = new Societe($this->db);
+		$result = $thirdparty->fetch($socid);
+		if ($result <= 0) {
+			throw new RuntimeException('third party not found');
+		}
+		return $thirdparty;
+	}
+
+	private function setThirdpartyLogoFromFile(Societe $thirdparty, string $sourceFile, bool $squared = false, string $source = ''): int
+	{
+		if (!function_exists('image_format_supported') || image_format_supported($sourceFile) <= 0) {
+			throw new InvalidArgumentException('unsupported image format: '.$sourceFile);
+		}
+
+		$dir = $this->thirdpartyLogoDir($thirdparty);
+		dol_mkdir($dir);
+		if (!is_dir($dir)) {
+			throw new RuntimeException('failed to create logo directory: '.$dir);
+		}
+
+		$currentLogo = (string) $thirdparty->logo;
+		$currentSquaredLogo = (string) $thirdparty->logo_squarred;
+		$filename = dol_sanitizeFileName(basename($source ?: $sourceFile));
+		if ($filename === '') {
+			$filename = 'logo.'.pathinfo($sourceFile, PATHINFO_EXTENSION);
+		}
+		$target = $dir.'/'.$filename;
+
+		if ($currentLogo !== '' && $currentLogo !== $filename) {
+			dol_delete_file($dir.'/'.$currentLogo);
+		}
+		if ($currentSquaredLogo !== '' && $currentSquaredLogo !== $currentLogo && $currentSquaredLogo !== $filename) {
+			dol_delete_file($dir.'/'.$currentSquaredLogo);
+		}
+		dol_delete_dir_recursive($dir.'/thumbs');
+
+		if (!copy($sourceFile, $target)) {
+			throw new RuntimeException('failed to copy logo to '.$target);
+		}
+		$thirdparty->addThumbs($target);
+
+		$thirdparty->logo = $filename;
+		if ($squared) {
+			$thirdparty->logo_squarred = $filename;
+		}
+		$result = $thirdparty->update($thirdparty->id, $this->user, 1, 1, 1);
+		if ($result < 0) {
+			throw new RuntimeException('failed to update third-party logo: '.$this->objectError($thirdparty));
+		}
+
+		$thirdparty->fetch($thirdparty->id);
+		return $this->output($this->thirdpartyLogoData($thirdparty));
+	}
+
+	private function thirdpartyLogoDir(Societe $thirdparty): string
+	{
+		global $conf;
+
+		$entity = !empty($thirdparty->entity) ? (int) $thirdparty->entity : (int) $conf->entity;
+		$base = $conf->societe->multidir_output[$entity] ?? $conf->societe->dir_output;
+		return rtrim($base, '/').'/'.$thirdparty->id.'/logos';
+	}
+
+	/** @return array<string, mixed> */
+	private function thirdpartyLogoData(Societe $thirdparty): array
+	{
+		$dir = $this->thirdpartyLogoDir($thirdparty);
+		$logo = (string) $thirdparty->logo;
+		$squared = (string) $thirdparty->logo_squarred;
+		return array(
+			'socid' => (int) $thirdparty->id,
+			'name' => (string) $thirdparty->name,
+			'logo' => $logo,
+			'logo_squarred' => $squared,
+			'path' => $logo !== '' ? $dir.'/'.$logo : '',
+			'thumb_small' => $logo !== '' ? $dir.'/'.getImageFileNameForSize($logo, '_small') : '',
+			'thumb_mini' => $logo !== '' ? $dir.'/'.getImageFileNameForSize($logo, '_mini') : '',
+		);
 	}
 
 	private function thirdpartyList(Options $options, string $kind): int

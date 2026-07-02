@@ -42,6 +42,10 @@ docli sync:flows --from 2026-09-01 --limit 50
 docli thirdparty:create --name "Example SAS" --prospect --address "1 rue Exemple" --zip 75001 --town Paris --country FR --email contact@example.com
 docli thirdparty:update --socid 2 --phone +33494196025 --email contact@example.com
 docli thirdparty:delete --socid 2 --yes
+docli thirdparty:logo:get --socid 2
+docli thirdparty:logo:set --socid 2 --file ./logo.png
+docli thirdparty:logo:fetch --socid 2 --url https://example.com/logo.png
+docli thirdparty:logo:delete --socid 2 --yes
 docli prospect:create --name "Prospect Example" --country FR --email prospect@example.com
 docli prospect:update --socid 2 --address "2 rue Exemple" --zip 75002
 docli customer:create --name "Client Example" --country FR --email client@example.com
@@ -68,6 +72,7 @@ Add `--json` to any command:
 docli --json provider:get
 docli --json routing:list --socid 2
 docli thirdparty:create --json --name "Example SAS" --customer --country FR
+docli thirdparty:logo:get --json --socid 2
 docli prospect:list --json
 docli customer:list --json
 docli other:list --json
@@ -86,6 +91,8 @@ docli contact:list --json --kind prospect
 `thirdparty:update`, `prospect:update`, and `customer:update` only change the fields passed on the command line. `prospect:update` keeps the third party as prospect, and `customer:update` keeps it as customer.
 
 `thirdparty:delete` requires `--yes` and uses Dolibarr's native delete checks. Dolibarr may refuse deletion if the third party is used by other objects.
+
+`thirdparty:logo:set`, `thirdparty:logo:fetch`, `thirdparty:logo:get`, and `thirdparty:logo:delete` manage the logo shown on the Dolibarr third-party card. Logos are stored in Dolibarr's native `societe/{socid}/logos` document directory and thumbnails are generated automatically.
 
 `prospect:create` and `customer:create` are shortcuts that match the Dolibarr menu entries "Nouveau prospect" and "Nouveau client".
 
