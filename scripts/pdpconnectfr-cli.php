@@ -119,26 +119,13 @@ final class PDPConnectFRCli extends CLI
 		$options->registerOption('limit', 'Maximum number of flows.', null, 'N', 'sync:flows');
 
 		$options->registerCommand('thirdparty:create', 'Create a third party.');
-		$this->registerCommonOptions($options, 'thirdparty:create');
-		$options->registerOption('name', 'Third-party legal name.', null, 'NAME', 'thirdparty:create');
-		$options->registerOption('alias', 'Commercial name or brand.', null, 'ALIAS', 'thirdparty:create');
-		$options->registerOption('customer', 'Mark as customer.', null, false, 'thirdparty:create');
-		$options->registerOption('prospect', 'Mark as prospect. This is the default when no type is provided.', null, false, 'thirdparty:create');
-		$options->registerOption('supplier', 'Mark as supplier.', null, false, 'thirdparty:create');
-		$options->registerOption('code-client', 'Customer/prospect code. Use auto for Dolibarr numbering.', null, 'CODE', 'thirdparty:create');
-		$options->registerOption('code-supplier', 'Supplier code. Use auto for Dolibarr numbering.', null, 'CODE', 'thirdparty:create');
-		$options->registerOption('address', 'Postal address.', null, 'ADDRESS', 'thirdparty:create');
-		$options->registerOption('zip', 'Postal code.', null, 'ZIP', 'thirdparty:create');
-		$options->registerOption('town', 'City/town.', null, 'TOWN', 'thirdparty:create');
-		$options->registerOption('country', 'ISO country code, for example FR.', null, 'CODE', 'thirdparty:create');
-		$options->registerOption('phone', 'Phone number.', null, 'PHONE', 'thirdparty:create');
-		$options->registerOption('mobile', 'Mobile phone number.', null, 'PHONE', 'thirdparty:create');
-		$options->registerOption('email', 'Email address.', null, 'EMAIL', 'thirdparty:create');
-		$options->registerOption('web', 'Website URL.', null, 'URL', 'thirdparty:create');
-		$options->registerOption('siren', 'French SIREN, stored as idprof1.', null, 'SIREN', 'thirdparty:create');
-		$options->registerOption('siret', 'French SIRET, stored as idprof2.', null, 'SIRET', 'thirdparty:create');
-		$options->registerOption('ape', 'NAF/APE code, stored as idprof3.', null, 'APE', 'thirdparty:create');
-		$options->registerOption('vat', 'VAT number.', null, 'VAT', 'thirdparty:create');
+		$this->registerThirdpartyCreateOptions($options, 'thirdparty:create', true);
+
+		$options->registerCommand('prospect:create', 'Create a prospect.');
+		$this->registerThirdpartyCreateOptions($options, 'prospect:create', false);
+
+		$options->registerCommand('customer:create', 'Create a customer.');
+		$this->registerThirdpartyCreateOptions($options, 'customer:create', false);
 
 		$options->registerCommand('thirdparty:get', 'Fetch a third party by ID, SIREN, SIRET, or email.');
 		$this->registerCommonOptions($options, 'thirdparty:get');
@@ -183,6 +170,20 @@ final class PDPConnectFRCli extends CLI
 		$options->registerCommand('contact:list', 'List contacts/addresses linked to a third party.');
 		$this->registerCommonOptions($options, 'contact:list');
 		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'contact:list');
+		$options->registerOption('kind', 'Filter linked third party: prospect, customer, other, or all.', null, 'KIND', 'contact:list');
+		$options->registerOption('limit', 'Maximum number of contacts.', null, 'N', 'contact:list');
+
+		$options->registerCommand('contact:prospects', 'List contacts/addresses linked to prospects.');
+		$this->registerCommonOptions($options, 'contact:prospects');
+		$options->registerOption('limit', 'Maximum number of contacts.', null, 'N', 'contact:prospects');
+
+		$options->registerCommand('contact:customers', 'List contacts/addresses linked to customers.');
+		$this->registerCommonOptions($options, 'contact:customers');
+		$options->registerOption('limit', 'Maximum number of contacts.', null, 'N', 'contact:customers');
+
+		$options->registerCommand('contact:others', 'List contacts/addresses linked to other third parties.');
+		$this->registerCommonOptions($options, 'contact:others');
+		$options->registerOption('limit', 'Maximum number of contacts.', null, 'N', 'contact:others');
 	}
 
 	protected function main(Options $options)
@@ -241,6 +242,12 @@ final class PDPConnectFRCli extends CLI
 				case 'thirdparty:create':
 					$this->exitCode = $this->thirdpartyCreate($options);
 					return;
+				case 'prospect:create':
+					$this->exitCode = $this->thirdpartyCreate($options, 'prospect');
+					return;
+				case 'customer:create':
+					$this->exitCode = $this->thirdpartyCreate($options, 'customer');
+					return;
 				case 'thirdparty:get':
 					$this->exitCode = $this->thirdpartyGet($options);
 					return;
@@ -260,7 +267,16 @@ final class PDPConnectFRCli extends CLI
 					$this->exitCode = $this->contactCreate($options);
 					return;
 				case 'contact:list':
-					$this->exitCode = $this->contactList($options);
+					$this->exitCode = $this->contactList($options, (string) $options->getOpt('kind', 'all'));
+					return;
+				case 'contact:prospects':
+					$this->exitCode = $this->contactList($options, 'prospect');
+					return;
+				case 'contact:customers':
+					$this->exitCode = $this->contactList($options, 'customer');
+					return;
+				case 'contact:others':
+					$this->exitCode = $this->contactList($options, 'other');
 					return;
 				default:
 					$this->error("unknown command: ".$command);
@@ -299,6 +315,35 @@ final class PDPConnectFRCli extends CLI
 			return;
 		}
 		$options->registerOption('help', 'Display this help screen and exit immediately.', 'h', false, $command);
+	}
+
+	private function registerThirdpartyCreateOptions(Options $options, string $command, bool $withTypeFlags): void
+	{
+		$this->registerCommonOptions($options, $command);
+		$options->registerOption('name', 'Third-party legal name.', null, 'NAME', $command);
+		$options->registerOption('alias', 'Commercial name or brand.', null, 'ALIAS', $command);
+		if ($withTypeFlags) {
+			$options->registerOption('customer', 'Mark as customer.', null, false, $command);
+			$options->registerOption('prospect', 'Mark as prospect. This is the default when no type is provided.', null, false, $command);
+			$options->registerOption('supplier', 'Mark as supplier.', null, false, $command);
+		}
+		$options->registerOption('code-client', 'Customer/prospect code. Use auto for Dolibarr numbering.', null, 'CODE', $command);
+		$options->registerOption('code-supplier', 'Supplier code. Use auto for Dolibarr numbering.', null, 'CODE', $command);
+		$options->registerOption('address', 'Postal address.', null, 'ADDRESS', $command);
+		$options->registerOption('zip', 'Postal code.', null, 'ZIP', $command);
+		$options->registerOption('town', 'City/town.', null, 'TOWN', $command);
+		$options->registerOption('country', 'ISO country code, for example FR.', null, 'CODE', $command);
+		$options->registerOption('phone', 'Phone number.', null, 'PHONE', $command);
+		$options->registerOption('mobile', 'Mobile phone number.', null, 'PHONE', $command);
+		$options->registerOption('email', 'Email address.', null, 'EMAIL', $command);
+		$options->registerOption('web', 'Website URL.', null, 'URL', $command);
+		$options->registerOption('siren', 'French SIREN, stored as idprof1.', null, 'SIREN', $command);
+		$options->registerOption('siret', 'French SIRET, stored as idprof2.', null, 'SIRET', $command);
+		$options->registerOption('ape', 'NAF/APE code, stored as idprof3.', null, 'APE', $command);
+		$options->registerOption('rcs', 'RCS/RM, stored as idprof4.', null, 'RCS', $command);
+		$options->registerOption('eori', 'EORI number, stored as idprof5.', null, 'EORI', $command);
+		$options->registerOption('rna', 'RNA number, stored as idprof6.', null, 'RNA', $command);
+		$options->registerOption('vat', 'VAT number.', null, 'VAT', $command);
 	}
 
 	private function bootstrapDolibarr(): void
@@ -524,7 +569,7 @@ final class PDPConnectFRCli extends CLI
 		return $this->output($result) === self::EXIT_OK ? self::EXIT_OK : self::EXIT_SOFTWARE;
 	}
 
-	private function thirdpartyCreate(Options $options): int
+	private function thirdpartyCreate(Options $options, string $forcedKind = ''): int
 	{
 		$name = trim((string) $options->getOpt('name', ''));
 		if ($name === '') {
@@ -535,8 +580,8 @@ final class PDPConnectFRCli extends CLI
 		$thirdparty->name = $name;
 		$thirdparty->nom = $name;
 		$thirdparty->name_alias = trim((string) $options->getOpt('alias', ''));
-		$thirdparty->client = $this->thirdpartyClientStatus($options);
-		$thirdparty->fournisseur = $options->getOpt('supplier') ? 1 : 0;
+		$thirdparty->client = $this->thirdpartyClientStatus($options, $forcedKind);
+		$thirdparty->fournisseur = $forcedKind === 'supplier' || $options->getOpt('supplier') ? 1 : 0;
 		if ($thirdparty->client > 0) {
 			$thirdparty->code_client = (string) $options->getOpt('code-client', 'auto');
 		}
@@ -555,6 +600,9 @@ final class PDPConnectFRCli extends CLI
 		$thirdparty->idprof1 = (string) $options->getOpt('siren', '');
 		$thirdparty->idprof2 = (string) $options->getOpt('siret', '');
 		$thirdparty->idprof3 = (string) $options->getOpt('ape', '');
+		$thirdparty->idprof4 = (string) $options->getOpt('rcs', '');
+		$thirdparty->idprof5 = (string) $options->getOpt('eori', '');
+		$thirdparty->idprof6 = (string) $options->getOpt('rna', '');
 		$thirdparty->tva_intra = (string) $options->getOpt('vat', '');
 		$thirdparty->status = 1;
 
@@ -598,36 +646,7 @@ final class PDPConnectFRCli extends CLI
 		}
 
 		$where = array('entity IN ('.getEntity('societe').')');
-		switch ($kind) {
-			case 'all':
-			case '':
-				break;
-			case 'prospect':
-			case 'prospects':
-				$where[] = 'client IN (2, 3)';
-				break;
-			case 'customer':
-			case 'customers':
-			case 'client':
-			case 'clients':
-				$where[] = 'client IN (1, 3)';
-				break;
-			case 'supplier':
-			case 'suppliers':
-			case 'fournisseur':
-			case 'fournisseurs':
-				$where[] = 'fournisseur = 1';
-				break;
-			case 'other':
-			case 'others':
-			case 'autre':
-			case 'autres':
-				$where[] = '(client IS NULL OR client = 0)';
-				$where[] = '(fournisseur IS NULL OR fournisseur = 0)';
-				break;
-			default:
-				throw new InvalidArgumentException('unknown --kind value: '.$kind);
-		}
+		$where = array_merge($where, $this->thirdpartyKindWhere($kind));
 
 		$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."societe";
 		$sql .= " WHERE ".implode(' AND ', $where);
@@ -694,10 +713,24 @@ final class PDPConnectFRCli extends CLI
 		return $this->output($this->contactData($contact));
 	}
 
-	private function contactList(Options $options): int
+	private function contactList(Options $options, string $kind = 'all'): int
 	{
-		$socid = $this->requiredInt($options, 'socid');
-		$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."socpeople WHERE fk_soc = ".((int) $socid)." ORDER BY lastname, firstname, rowid";
+		$limit = $options->getOpt('limit') ? (int) $options->getOpt('limit') : 100;
+		if ($limit < 1) {
+			throw new InvalidArgumentException('--limit must be a positive integer');
+		}
+
+		$where = array('sp.entity IN ('.getEntity('contact').')');
+		if ($options->getOpt('socid')) {
+			$where[] = 'sp.fk_soc = '.$this->requiredInt($options, 'socid');
+		}
+		$where = array_merge($where, $this->thirdpartyKindWhere($kind, 's'));
+
+		$sql = "SELECT sp.rowid FROM ".MAIN_DB_PREFIX."socpeople as sp";
+		$sql .= " LEFT JOIN ".MAIN_DB_PREFIX."societe as s ON s.rowid = sp.fk_soc";
+		$sql .= " WHERE ".implode(' AND ', $where);
+		$sql .= " ORDER BY sp.lastname, sp.firstname, sp.rowid";
+		$sql .= $this->db->plimit($limit);
 		$resql = $this->db->query($sql);
 		if (!$resql) {
 			throw new RuntimeException('failed to list contacts: '.$this->db->lasterror());
@@ -741,8 +774,14 @@ final class PDPConnectFRCli extends CLI
 		return (int) $value;
 	}
 
-	private function thirdpartyClientStatus(Options $options): int
+	private function thirdpartyClientStatus(Options $options, string $forcedKind = ''): int
 	{
+		if ($forcedKind === 'prospect') {
+			return 2;
+		}
+		if ($forcedKind === 'customer') {
+			return 1;
+		}
 		$isCustomer = (bool) $options->getOpt('customer');
 		$isProspect = (bool) $options->getOpt('prospect');
 		if (!$isCustomer && !$isProspect && !$options->getOpt('supplier')) {
@@ -758,6 +797,41 @@ final class PDPConnectFRCli extends CLI
 			return 1;
 		}
 		return 0;
+	}
+
+	/** @return array<int, string> */
+	private function thirdpartyKindWhere(string $kind, string $alias = ''): array
+	{
+		$kind = strtolower(trim($kind));
+		$prefix = $alias !== '' ? $alias.'.' : '';
+		switch ($kind) {
+			case 'all':
+			case '':
+				return array();
+			case 'prospect':
+			case 'prospects':
+				return array($prefix.'client IN (2, 3)');
+			case 'customer':
+			case 'customers':
+			case 'client':
+			case 'clients':
+				return array($prefix.'client IN (1, 3)');
+			case 'supplier':
+			case 'suppliers':
+			case 'fournisseur':
+			case 'fournisseurs':
+				return array($prefix.'fournisseur = 1');
+			case 'other':
+			case 'others':
+			case 'autre':
+			case 'autres':
+				return array(
+					'('.$prefix.'client IS NULL OR '.$prefix.'client = 0)',
+					'('.$prefix.'fournisseur IS NULL OR '.$prefix.'fournisseur = 0)',
+				);
+			default:
+				throw new InvalidArgumentException('unknown kind value: '.$kind);
+		}
 	}
 
 	private function countryIdFromCode(string $countryCode): int

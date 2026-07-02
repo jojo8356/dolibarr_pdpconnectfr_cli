@@ -40,6 +40,8 @@ pdpconnectfr routing:set --socid 2 --routing-id 322324963 --info SIREN
 pdpconnectfr routing:delete --socid 2
 pdpconnectfr sync:flows --from 2026-09-01 --limit 50
 pdpconnectfr thirdparty:create --name "Example SAS" --prospect --address "1 rue Exemple" --zip 75001 --town Paris --country FR --email contact@example.com
+pdpconnectfr prospect:create --name "Prospect Example" --country FR --email prospect@example.com
+pdpconnectfr customer:create --name "Client Example" --country FR --email client@example.com
 pdpconnectfr thirdparty:get --socid 2
 pdpconnectfr thirdparty:list --kind prospect --limit 50
 pdpconnectfr prospect:list
@@ -47,6 +49,9 @@ pdpconnectfr customer:list
 pdpconnectfr other:list
 pdpconnectfr contact:create --socid 2 --firstname Alice --lastname Martin --job "Responsable achats" --email alice@example.com
 pdpconnectfr contact:list --socid 2
+pdpconnectfr contact:prospects
+pdpconnectfr contact:customers
+pdpconnectfr contact:others
 ```
 
 ## JSON Output
@@ -61,6 +66,7 @@ pdpconnectfr prospect:list --json
 pdpconnectfr customer:list --json
 pdpconnectfr other:list --json
 pdpconnectfr contact:create --json --socid 2 --firstname Alice --lastname Martin
+pdpconnectfr contact:list --json --kind prospect
 ```
 
 ## Notes
@@ -69,6 +75,8 @@ pdpconnectfr contact:create --json --socid 2 --firstname Alice --lastname Martin
 
 `thirdparty:create` defaults to prospect when neither `--customer`, `--prospect`, nor `--supplier` is provided. Use `--code-client auto` or omit it to let Dolibarr generate the customer/prospect code.
 
+`prospect:create` and `customer:create` are shortcuts that match the Dolibarr menu entries "Nouveau prospect" and "Nouveau client".
+
 `thirdparty:list --kind` accepts `prospect`, `customer`, `supplier`, `other`, and `all`. The shortcut commands `prospect:list`, `customer:list`, and `other:list` use those filters directly.
 
-`contact:create` creates a Dolibarr contact/address linked to a third party. If address fields are omitted, it reuses the third-party address.
+`contact:create` creates a Dolibarr contact/address linked to a third party. If address fields are omitted, it reuses the third-party address. `contact:list --kind`, `contact:prospects`, `contact:customers`, and `contact:others` match the Dolibarr "Contacts/Adresses" list filters.
