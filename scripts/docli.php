@@ -993,7 +993,9 @@ final class Docli extends CLI
 		if (!copy($sourceFile, $target)) {
 			throw new RuntimeException('failed to copy logo to '.$target);
 		}
+		dolChmod($target, '0644');
 		$thirdparty->addThumbs($target);
+		$this->chmodThirdpartyLogoFiles($dir);
 
 		$thirdparty->logo = $filename;
 		if ($squared) {
@@ -1015,6 +1017,29 @@ final class Docli extends CLI
 		$entity = !empty($thirdparty->entity) ? (int) $thirdparty->entity : (int) $conf->entity;
 		$base = $conf->societe->multidir_output[$entity] ?? $conf->societe->dir_output;
 		return rtrim($base, '/').'/'.$thirdparty->id.'/logos';
+	}
+
+	private function chmodThirdpartyLogoFiles(string $dir): void
+	{
+		if (is_dir($dir)) {
+			@chmod($dir, 0755);
+		}
+
+		$thumbsDir = $dir.'/thumbs';
+		if (is_dir($thumbsDir)) {
+			@chmod($thumbsDir, 0755);
+		}
+
+		foreach (glob($dir.'/*') ?: array() as $path) {
+			if (is_file($path)) {
+				dolChmod($path, '0644');
+			}
+		}
+		foreach (glob($thumbsDir.'/*') ?: array() as $path) {
+			if (is_file($path)) {
+				dolChmod($path, '0644');
+			}
+		}
 	}
 
 	/** @return array<string, mixed> */
