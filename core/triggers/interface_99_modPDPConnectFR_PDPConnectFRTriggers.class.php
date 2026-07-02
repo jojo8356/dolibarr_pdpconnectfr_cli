@@ -23,6 +23,8 @@
  */
 
 require_once DOL_DOCUMENT_ROOT.'/core/triggers/dolibarrtriggers.class.php';
+dol_include_once('/pdpconnectfr/class/pdpconnectfr.class.php');
+dol_include_once('/pdpconnectfr/class/providers/PDPProviderManager.class.php');
 
 
 /**

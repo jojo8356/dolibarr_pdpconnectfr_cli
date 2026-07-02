@@ -33,6 +33,18 @@ Using your browser:
   - Go to "Setup - Modules"
   - You should now be able to find and enable the module
 
+## Command line interface
+
+PDPConnectFR includes a CLI for administration and automation:
+
+```sh
+php htdocs/custom/pdpconnectfr/scripts/pdpconnectfr-cli.php --help
+```
+
+The CLI can list and configure PA providers, validate company prerequisites,
+manage e-invoicing routing identifiers, fetch provider tokens, and synchronize
+flows. See [README_CLI.md](README_CLI.md).
+
 
 
 ## Licenses
