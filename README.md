@@ -33,17 +33,17 @@ Using your browser:
   - Go to "Setup - Modules"
   - You should now be able to find and enable the module
 
-## Command line interface
+## docli command line interface
 
-PDPConnectFR includes a CLI for administration and automation:
+This module includes `docli`, a Dolibarr CLI for administration and automation:
 
 ```sh
-php htdocs/custom/pdpconnectfr/scripts/pdpconnectfr-cli.php --help
+php htdocs/custom/pdpconnectfr/scripts/docli.php --help
 ```
 
 The CLI can list and configure PA providers, validate company prerequisites,
-manage e-invoicing routing identifiers, fetch provider tokens, and synchronize
-flows. See [README_CLI.md](README_CLI.md).
+manage e-invoicing routing identifiers, fetch provider tokens, synchronize
+flows, and create/list third parties and contacts. See [README_DOCLI.md](README_DOCLI.md).
 
 
 

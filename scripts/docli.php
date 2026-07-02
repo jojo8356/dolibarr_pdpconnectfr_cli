@@ -9,7 +9,7 @@
  */
 
 /**
- * Command line interface for PDPConnectFR.
+ * Dolibarr command line interface.
  *
  * This script follows common POSIX/GNU CLI conventions:
  * - --help and --version are always available.
@@ -19,7 +19,7 @@
  */
 
 if (PHP_SAPI !== 'cli') {
-	fwrite(STDERR, "pdpconnectfr: this command must be run from a CLI SAPI\n");
+	fwrite(STDERR, "docli: this command must be run from a CLI SAPI\n");
 	exit(2);
 }
 
@@ -37,7 +37,7 @@ require_once __DIR__.'/../vendor/splitbrain/php-cli/src/CLI.php';
 use splitbrain\phpcli\CLI;
 use splitbrain\phpcli\Options;
 
-final class PDPConnectFRCli extends CLI
+final class Docli extends CLI
 {
 	private const VERSION = '1.0.0';
 
@@ -63,7 +63,7 @@ final class PDPConnectFRCli extends CLI
 
 	protected function setup(Options $options)
 	{
-		$options->setHelp('Manage PDPConnectFR from the command line.');
+		$options->setHelp('Manage Dolibarr from the command line.');
 		$options->setCommandHelp('Available commands:');
 		$this->registerCommonOptions($options);
 
@@ -195,7 +195,7 @@ final class PDPConnectFRCli extends CLI
 		try {
 			$command = $options->getCmd();
 			if ($options->getOpt('version') || $command === 'version') {
-				$this->writeLine('pdpconnectfr-cli '.self::VERSION);
+				$this->writeLine('docli '.self::VERSION);
 				$this->exitCode = self::EXIT_OK;
 				return;
 			}
@@ -280,7 +280,7 @@ final class PDPConnectFRCli extends CLI
 					return;
 				default:
 					$this->error("unknown command: ".$command);
-					$this->error("run 'pdpconnectfr help' for usage");
+					$this->error("run 'docli help' for usage");
 					$this->exitCode = self::EXIT_USAGE;
 					return;
 			}
@@ -1000,10 +1000,10 @@ final class PDPConnectFRCli extends CLI
 
 	public function error($message, array $context = array())
 	{
-		fwrite(STDERR, 'pdpconnectfr: '.$message.PHP_EOL);
+		fwrite(STDERR, 'docli: '.$message.PHP_EOL);
 	}
 }
 
-$app = new PDPConnectFRCli();
+$app = new Docli();
 $app->run();
 exit($app->getExitCode());
