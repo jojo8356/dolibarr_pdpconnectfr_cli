@@ -147,6 +147,23 @@ final class PDPConnectFRCli extends CLI
 		$options->registerOption('siret', 'SIRET.', null, 'SIRET', 'thirdparty:get');
 		$options->registerOption('email', 'Email address.', null, 'EMAIL', 'thirdparty:get');
 
+		$options->registerCommand('thirdparty:list', 'List third parties.');
+		$this->registerCommonOptions($options, 'thirdparty:list');
+		$options->registerOption('kind', 'Filter: prospect, customer, supplier, other, or all.', null, 'KIND', 'thirdparty:list');
+		$options->registerOption('limit', 'Maximum number of third parties.', null, 'N', 'thirdparty:list');
+
+		$options->registerCommand('prospect:list', 'List prospects.');
+		$this->registerCommonOptions($options, 'prospect:list');
+		$options->registerOption('limit', 'Maximum number of prospects.', null, 'N', 'prospect:list');
+
+		$options->registerCommand('customer:list', 'List customers.');
+		$this->registerCommonOptions($options, 'customer:list');
+		$options->registerOption('limit', 'Maximum number of customers.', null, 'N', 'customer:list');
+
+		$options->registerCommand('other:list', 'List third parties that are neither prospect, customer, nor supplier.');
+		$this->registerCommonOptions($options, 'other:list');
+		$options->registerOption('limit', 'Maximum number of third parties.', null, 'N', 'other:list');
+
 		$options->registerCommand('contact:create', 'Create a contact/address linked to a third party.');
 		$this->registerCommonOptions($options, 'contact:create');
 		$options->registerOption('socid', 'Dolibarr third-party ID.', null, 'ID', 'contact:create');
@@ -226,6 +243,18 @@ final class PDPConnectFRCli extends CLI
 					return;
 				case 'thirdparty:get':
 					$this->exitCode = $this->thirdpartyGet($options);
+					return;
+				case 'thirdparty:list':
+					$this->exitCode = $this->thirdpartyList($options, (string) $options->getOpt('kind', 'all'));
+					return;
+				case 'prospect:list':
+					$this->exitCode = $this->thirdpartyList($options, 'prospect');
+					return;
+				case 'customer:list':
+					$this->exitCode = $this->thirdpartyList($options, 'customer');
+					return;
+				case 'other:list':
+					$this->exitCode = $this->thirdpartyList($options, 'other');
 					return;
 				case 'contact:create':
 					$this->exitCode = $this->contactCreate($options);
@@ -558,6 +587,68 @@ final class PDPConnectFRCli extends CLI
 		}
 
 		return $this->output($this->thirdpartyData($thirdparty));
+	}
+
+	private function thirdpartyList(Options $options, string $kind): int
+	{
+		$kind = strtolower(trim($kind));
+		$limit = $options->getOpt('limit') ? (int) $options->getOpt('limit') : 100;
+		if ($limit < 1) {
+			throw new InvalidArgumentException('--limit must be a positive integer');
+		}
+
+		$where = array('entity IN ('.getEntity('societe').')');
+		switch ($kind) {
+			case 'all':
+			case '':
+				break;
+			case 'prospect':
+			case 'prospects':
+				$where[] = 'client IN (2, 3)';
+				break;
+			case 'customer':
+			case 'customers':
+			case 'client':
+			case 'clients':
+				$where[] = 'client IN (1, 3)';
+				break;
+			case 'supplier':
+			case 'suppliers':
+			case 'fournisseur':
+			case 'fournisseurs':
+				$where[] = 'fournisseur = 1';
+				break;
+			case 'other':
+			case 'others':
+			case 'autre':
+			case 'autres':
+				$where[] = '(client IS NULL OR client = 0)';
+				$where[] = '(fournisseur IS NULL OR fournisseur = 0)';
+				break;
+			default:
+				throw new InvalidArgumentException('unknown --kind value: '.$kind);
+		}
+
+		$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."societe";
+		$sql .= " WHERE ".implode(' AND ', $where);
+		$sql .= " ORDER BY nom ASC, rowid ASC";
+		$sql .= $this->db->plimit($limit);
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new RuntimeException('failed to list third parties: '.$this->db->lasterror());
+		}
+
+		$thirdparties = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$thirdparty = new Societe($this->db);
+			if ($thirdparty->fetch((int) $obj->rowid) > 0) {
+				$thirdparties[] = $this->thirdpartyData($thirdparty);
+			}
+		}
+		$this->db->free($resql);
+
+		return $this->output($thirdparties, array('id', 'name', 'client', 'supplier', 'code_client', 'email', 'phone', 'town'));
 	}
 
 	private function contactCreate(Options $options): int
