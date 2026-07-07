@@ -40,6 +40,7 @@ docli routing:set --socid 2 --routing-id 322324963 --info SIREN
 docli routing:delete --socid 2
 docli sync:flows --from 2026-09-01 --limit 50
 docli thirdparty:create --name "Example SAS" --prospect --address "1 rue Exemple" --zip 75001 --town Paris --country FR --email contact@example.com
+docli thirdparty:create --entity 2 --name "Example SAS" --prospect --country FR
 docli thirdparty:update --socid 2 --phone +33494196025 --email contact@example.com
 docli thirdparty:delete --socid 2 --yes
 docli thirdparty:logo:get --socid 2
@@ -56,6 +57,7 @@ docli prospect:list
 docli customer:list
 docli other:list
 docli contact:create --socid 2 --firstname Alice --lastname Martin --job "Responsable achats" --email alice@example.com
+docli contact:create --entity 2 --socid 2 --firstname Alice --lastname Martin --job "Responsable achats" --email alice@example.com
 docli contact:update --id 12 --email alice@example.com --phone-perso "06 01 02 03 04"
 docli contact:delete --id 12 --yes
 docli contact:list --socid 2
@@ -85,6 +87,8 @@ docli contact:list --json --kind prospect
 ## Notes
 
 `provider:health`, `token:get`, and `sync:flows` require a configured PA provider and valid provider credentials.
+
+Use `--entity ID` on multi-entity installations to run a command in a specific Dolibarr entity, for example `--entity 2` for the second entity.
 
 `thirdparty:create` defaults to prospect when neither `--customer`, `--prospect`, nor `--supplier` is provided. Use `--code-client auto` or omit it to let Dolibarr generate the customer/prospect code.
 

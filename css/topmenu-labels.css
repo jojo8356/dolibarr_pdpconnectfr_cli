@@ -1,0 +1,44 @@
+/*
+ * Keep Dolibarr top menu labels visible when Eldy is configured in
+ * "icons with text on hover" mode.
+ */
+.tmenulabel:not(.menuhider),
+.tmenulabel:not(.menuhider)::before {
+	display: block !important;
+	line-height: 1.1em !important;
+	height: auto !important;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--colortextbackhmenu);
+	opacity: 1 !important;
+}
+
+.tmenuimage:not(.menuhider),
+.tmenuimage:not(.menuhider)::before {
+	margin-top: 0 !important;
+}
+
+li.tmenu,
+li.tmenusel {
+	min-width: 86px;
+}
+
+div.tmenucenter {
+	width: 86px;
+	max-width: 110px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+@media only screen and (max-width: 767px) {
+	li.tmenu,
+	li.tmenusel {
+		min-width: 74px;
+	}
+
+	div.tmenucenter {
+		width: 74px;
+		max-width: 92px;
+	}
+}

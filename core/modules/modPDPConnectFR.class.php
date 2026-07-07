@@ -110,7 +110,9 @@ class modPDPConnectFR extends DolibarrModules
 			// Set this to 1 if module has its own theme directory (theme)
 			'theme' => 0,
 			// Set this to relative path of css file if module has its own css file
-			'css' => array(),
+			'css' => array(
+				'/pdpconnectfr/css/topmenu-labels.css',
+			),
 			// Set this to relative path of js file if module must load a js on all pages
 			'js' => array(
 				//   '/pdpconnectfr/js/pdpconnectfr.js.php',

@@ -51,6 +51,7 @@ final class Docli extends CLI
 		'format' => 'text',
 		'quiet' => false,
 		'verbose' => false,
+		'entity' => 0,
 	);
 
 	/** @var DoliDB */
@@ -223,6 +224,8 @@ final class Docli extends CLI
 		$this->globalOptions['verbose'] = (bool) $options->getOpt('verbose');
 
 		try {
+			$this->globalOptions['entity'] = $this->parseEntityOption($options);
+
 			$command = $options->getCmd();
 			if ($options->getOpt('version') || $command === 'version') {
 				$this->writeLine('docli '.self::VERSION);
@@ -370,11 +373,24 @@ final class Docli extends CLI
 		$options->registerOption('text', 'Emit human-readable text, the default.', null, false, $command);
 		$options->registerOption('quiet', 'Suppress normal stdout output.', 'q', false, $command);
 		$options->registerOption('verbose', 'Print stack traces on unexpected errors.', 'v', false, $command);
+		$options->registerOption('entity', 'Dolibarr entity ID to use, for multi-entity installations.', null, 'ID', $command);
 		if ($command === '') {
 			$options->registerOption('version', 'Show version.', null, false, $command);
 			return;
 		}
 		$options->registerOption('help', 'Display this help screen and exit immediately.', 'h', false, $command);
+	}
+
+	private function parseEntityOption(Options $options): int
+	{
+		$value = $options->getOpt('entity');
+		if ($value === null || $value === false || $value === '') {
+			return 0;
+		}
+		if (!ctype_digit((string) $value) || (int) $value <= 0) {
+			throw new InvalidArgumentException('--entity must be a positive integer');
+		}
+		return (int) $value;
 	}
 
 	private function registerThirdpartyCreateOptions(Options $options, string $command, bool $withTypeFlags): void
@@ -470,6 +486,11 @@ final class Docli extends CLI
 		}
 
 		global $conf, $db, $langs, $mysoc, $user, $hookmanager;
+
+		if (!empty($this->globalOptions['entity'])) {
+			$_ENV['dol_entity'] = (string) $this->globalOptions['entity'];
+			$_SERVER['dol_entity'] = (string) $this->globalOptions['entity'];
+		}
 
 		require_once $master;
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
